@@ -54,3 +54,36 @@ export function pickInlineBackend(config, caps = detectCapabilities()) {
 
 // Cycle order for the in-reader "switch renderer" key.
 export const RENDERER_CYCLE = ['auto', 'halfblock', 'chafa'];
+
+// Actively ask the terminal what it supports by emitting a kitty-graphics
+// support query (APC G) + primary Device Attributes (DA1), then reading the
+// replies. DA1 returns ";4" when sixel is supported; a kitty ";OK" reply means
+// the kitty graphics protocol is available. Needs a real TTY on both ends.
+export async function probeTerminal({ timeoutMs = 350 } = {}) {
+  const { stdin, stdout } = process;
+  if (!stdout.isTTY || !stdin.isTTY) return { queried: false, sixel: false, kitty: false };
+
+  return new Promise((resolve) => {
+    let buf = '';
+    const prevRaw = stdin.isRaw;
+    const onData = (d) => { buf += d.toString('latin1'); };
+
+    try { stdin.setRawMode(true); } catch { /* ignore */ }
+    stdin.resume();
+    stdin.on('data', onData);
+    stdout.write('\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\\x1b[c');
+
+    setTimeout(() => {
+      stdin.removeListener('data', onData);
+      try { stdin.setRawMode(prevRaw); } catch { /* ignore */ }
+      stdin.pause();
+      // Matching raw terminal escape replies — control chars are intentional.
+      // eslint-disable-next-line no-control-regex
+      const kitty = /\x1b_G[^\x1b]*;OK/.test(buf);
+      // eslint-disable-next-line no-control-regex
+      const da = buf.match(/\x1b\[\?([0-9;]+)c/);
+      const sixel = da ? da[1].split(';').includes('4') : false;
+      resolve({ queried: true, sixel, kitty });
+    }, timeoutMs);
+  });
+}

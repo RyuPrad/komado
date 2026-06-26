@@ -20,21 +20,35 @@ In the reader:
 }
 
 async function doctor() {
-  const { detectCapabilities } = await import('./render/detect.js');
+  const { detectCapabilities, probeTerminal } = await import('./render/detect.js');
   const { paths, ensureDirs } = await import('./config.js');
   const { getConfig } = await import('./state/store.js');
   ensureDirs();
   const caps = detectCapabilities();
   const cfg = getConfig();
+  const probe = await probeTerminal();
 
   console.log('manga-tui doctor\n');
   console.log('Terminal:');
   console.log(`  TERM=${caps.term}  TERM_PROGRAM=${caps.termProgram || '(none)'}`);
   console.log(`  truecolor:        ${caps.truecolor}`);
-  console.log(`  kitty graphics:   ${caps.kitty}`);
-  console.log(`  sixel:            ${caps.sixel}`);
+  if (probe.queried) {
+    console.log(`  kitty graphics:   ${probe.kitty}  (probed)`);
+    console.log(`  sixel:            ${probe.sixel}  (probed)`);
+  } else {
+    console.log(`  kitty graphics:   ${caps.kitty}  (env guess — run in a real terminal to probe)`);
+    console.log(`  sixel:            ${caps.sixel}  (env guess — run in a real terminal to probe)`);
+  }
   console.log(`  chafa:            ${caps.chafa ? caps.chafaVersion : 'not installed'}`);
   console.log(`  inline backend:   ${caps.chafa ? 'chafa-symbols' : 'half-block'}  (config.renderer=${cfg.renderer})`);
+  if (probe.queried) {
+    const protos = [probe.kitty && 'kitty', probe.sixel && 'sixel'].filter(Boolean);
+    console.log(
+      protos.length
+        ? `\n  → Pixel graphics available (${protos.join(', ')}). Crisp rendering is possible:\n    test it with  node dist/cli.js render <some-image>`
+        : '\n  → No pixel protocol detected — rendering is limited to character cells.',
+    );
+  }
   console.log('\nPaths:');
   console.log(`  home:     ${paths.home}`);
   console.log(`  config:   ${paths.configFile}`);
