@@ -1,0 +1,6 @@
+node_modules/
+*.log
+.DS_Store
+
+# Local runtime state (config, progress, image cache) defaults here in dev
+.manga-tui/
