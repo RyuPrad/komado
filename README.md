@@ -71,6 +71,22 @@ node dist/cli.js render https://example.com/page.png 100
 | Reader | `r` | cycle renderer (`auto` → `halfblock` → `chafa`) |
 | Global | `q` | quit · `esc` back |
 
+## Rendering quality
+
+Readable text needs real pixels. At startup the app probes your terminal (run
+`npm run doctor` to see the result):
+
+- **sixel or kitty graphics supported** → opening a chapter launches a
+  full-resolution **pixel viewer** (chafa straight to the terminal). It renders
+  full-width with vertical pan by default; press `f` to toggle whole-page fit.
+  Keys: `n`/`p` page · `↑`/`↓` pan · `N`/`P` chapter · `f` fit · `q` back.
+- **neither** → the in-Ink **cell reader** is used (Unicode half-blocks, or
+  chafa symbols when available). Fine for art, coarse for small lettering —
+  that's the hard ceiling of character-cell rendering.
+
+Terminals with pixel support include kitty, WezTerm, Ghostty, foot, recent
+Windows Terminal (≥ 1.22), and VS Code's terminal (with image support enabled).
+
 ## Local library layout
 
 Add library folders in **Settings → Add library path…**. Within a library folder:

@@ -26,7 +26,7 @@ export function ContinueScreen() {
         source.listChapters(entry.mangaId, { limit: 500 }),
       ]);
       const idx = chRes.data.findIndex((c) => c.id === entry.chapterId);
-      ui.navigate('reader', {
+      ui.openReader({
         sourceId: entry.source,
         manga,
         chapters: chRes.data,

@@ -46,7 +46,7 @@ export function MangaScreen({ params }) {
   }, [initial.key]);
 
   const openAt = (index, startPage = 0) =>
-    ui.navigate('reader', { sourceId, manga, chapters, chapterIndex: index, startPage });
+    ui.openReader({ sourceId, manga, chapters, chapterIndex: index, startPage });
 
   const resume = () => {
     if (!progress) return;

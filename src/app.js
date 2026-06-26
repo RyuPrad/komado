@@ -19,10 +19,12 @@ const SCREENS = {
   continue: ContinueScreen,
 };
 
-export function App() {
+export function App({ caps = {}, onViewer, initialRoute = null }) {
   const { exit } = useApp();
   const dimensions = useStdoutDimensions();
-  const [stack, setStack] = useState([{ name: 'home', params: {} }]);
+  const [stack, setStack] = useState(
+    initialRoute ? [{ name: 'home', params: {} }, initialRoute] : [{ name: 'home', params: {} }],
+  );
   const [typing, setTyping] = useState(false);
 
   const navigate = useCallback((name, params = {}) => setStack((s) => [...s, { name, params }]), []);
@@ -42,7 +44,16 @@ export function App() {
 
   const current = stack[stack.length - 1];
   const Screen = SCREENS[current.name] || HomeScreen;
-  const ctx = { navigate, goBack, replace, exit: quit, setTyping, dimensions };
+  // openReader picks the high-res sixel/kitty viewer when the terminal supports
+  // it (handled outside Ink), else the in-Ink cell reader.
+  const openReader = useCallback(
+    (payload) => {
+      if (onViewer && (caps.sixel || caps.kitty) && caps.chafa) onViewer(payload);
+      else navigate('reader', payload);
+    },
+    [onViewer, caps, navigate],
+  );
+  const ctx = { navigate, goBack, replace, exit: quit, setTyping, dimensions, caps, openReader };
 
   // Remount on each push/pop so screens start with fresh state. The key includes
   // the depth so navigating back rebuilds the previous screen.

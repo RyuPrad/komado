@@ -11,7 +11,10 @@ Usage:
   manga-tui --version       print version
   manga-tui --help          show this help
 
-In the reader:
+On a sixel/kitty terminal, opening a chapter launches a full-resolution pixel
+viewer:  n/p page · ↑/↓ pan · N/P chapter · f fit-width/whole-page · q back
+
+Otherwise the in-terminal cell reader is used:
   ↑/↓ or j/k   scroll        ←/→ or h/l   prev/next page
   space        page down     N / P        next/prev chapter
   f            fit-to-screen r            cycle renderer
@@ -112,6 +115,10 @@ async function runApp() {
     process.exit(1);
   }
 
+  // Probe the terminal for pixel-protocol support before Ink grabs stdin.
+  const { detectCapabilities, probeTerminal } = await import('./render/detect.js');
+  const caps = { ...detectCapabilities(), ...(await probeTerminal()) };
+
   const { render } = await import('ink');
   const { App } = await import('./app.js');
 
@@ -120,9 +127,27 @@ async function runApp() {
   process.stdout.write('\x1b[?1049h\x1b[?25l');
   process.on('exit', restore);
 
-  const app = render(<App />, { exitOnCtrlC: true });
   try {
-    await app.waitUntilExit();
+    // Browse in Ink; when a chapter is opened on a pixel-capable terminal the
+    // app requests the sixel viewer: unmount Ink → run viewer → remount Ink.
+    let resumeRoute = null;
+    for (;;) {
+      let viewerRequest = null;
+      let instance;
+      const onViewer = (payload) => {
+        viewerRequest = payload;
+        // Defer so we don't unmount Ink in the middle of its input dispatch.
+        setImmediate(() => instance.unmount());
+      };
+      instance = render(<App caps={caps} onViewer={onViewer} initialRoute={resumeRoute} />, {
+        exitOnCtrlC: true,
+      });
+      await instance.waitUntilExit();
+      if (!viewerRequest) break; // normal quit
+
+      const { runViewer } = await import('./sixel-reader.js');
+      resumeRoute = await runViewer({ ...viewerRequest, caps });
+    }
   } finally {
     restore();
     process.removeListener('exit', restore);
