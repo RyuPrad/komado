@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { html } from '../../html.js';
 import { useUI } from '../../ui-context.js';
 import { getSource } from '../../sources/index.js';
 import { setProgress, getConfig } from '../../state/store.js';
@@ -189,32 +188,38 @@ export function ReaderScreen({ params }) {
   const pageLabel = pages ? `${pageIndex + 1}/${pages.length}` : '…';
   const slice = lines.slice(scroll, scroll + viewportRows);
 
-  return html`<${Box} flexDirection="column">
-    <${Box} justifyContent="space-between">
-      <${Text} color="magentaBright" bold>${truncate(manga.title, Math.max(10, cols - 34))}<//>
-      <${Text}>${truncate(chapterLabel(chapter), 24)} · ${pageLabel}${fitMode ? ' · fit' : ''}<//>
-    <//>
+  return (
+    <Box flexDirection="column">
+      <Box justifyContent="space-between">
+        <Text color="magentaBright" bold>{truncate(manga.title, Math.max(10, cols - 34))}</Text>
+        <Text>{`${truncate(chapterLabel(chapter), 24)} · ${pageLabel}${fitMode ? ' · fit' : ''}`}</Text>
+      </Box>
 
-    <${Box} height=${viewportRows} flexDirection="column">
-      ${status === 'loading'
-        ? html`<${Spinner} label=${pages ? `Rendering page ${pageIndex + 1}` : 'Loading chapter'} />`
-        : status === 'error'
-          ? html`<${Box} flexDirection="column">
-              <${ErrorView} error=${error} />
-              <${Text} dimColor>Press N / P to skip to another chapter, or Esc to go back.<//>
-            <//>`
-          : slice.map((ln, i) => html`<${Text} key=${scroll + i} wrap="truncate-end">${ln}<//>`)}
-    <//>
+      <Box height={viewportRows} flexDirection="column">
+        {status === 'loading' ? (
+          <Spinner label={pages ? `Rendering page ${pageIndex + 1}` : 'Loading chapter'} />
+        ) : status === 'error' ? (
+          <Box flexDirection="column">
+            <ErrorView error={error} />
+            <Text dimColor>Press N / P to skip to another chapter, or Esc to go back.</Text>
+          </Box>
+        ) : (
+          slice.map((ln, i) => (
+            <Text key={scroll + i} wrap="truncate-end">{ln}</Text>
+          ))
+        )}
+      </Box>
 
-    <${KeyHints}
-      hints=${[
-        ['←→', 'page'],
-        ['↑↓', 'scroll'],
-        ['N/P', 'chapter'],
-        ['f', fitMode ? 'scroll' : 'fit'],
-        ['r', `render:${rendererPref}`],
-        ['esc', 'back'],
-      ]}
-    />
-  <//>`;
+      <KeyHints
+        hints={[
+          ['←→', 'page'],
+          ['↑↓', 'scroll'],
+          ['N/P', 'chapter'],
+          ['f', fitMode ? 'scroll' : 'fit'],
+          ['r', `render:${rendererPref}`],
+          ['esc', 'back'],
+        ]}
+      />
+    </Box>
+  );
 }

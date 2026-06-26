@@ -100,14 +100,13 @@ async function runApp() {
 
   const { render } = await import('ink');
   const { App } = await import('./app.js');
-  const { html } = await import('./html.js');
 
   // Alternate screen + hidden cursor for a clean, scrollback-free experience.
   const restore = () => process.stdout.write('\x1b[?25h\x1b[?1049l');
   process.stdout.write('\x1b[?1049h\x1b[?25l');
   process.on('exit', restore);
 
-  const app = render(html`<${App} />`, { exitOnCtrlC: true });
+  const app = render(<App />, { exitOnCtrlC: true });
   try {
     await app.waitUntilExit();
   } finally {

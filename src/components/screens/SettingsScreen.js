@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
-import { html } from '../../html.js';
 import { useUI } from '../../ui-context.js';
 import { getConfig, setConfig } from '../../state/store.js';
 import { scan } from '../../sources/local/index.js';
@@ -93,36 +92,44 @@ export function SettingsScreen() {
     }
   });
 
-  return html`<${Box} flexDirection="column">
-    <${Header}
-      title="Settings"
-      subtitle=${`chafa: ${caps.chafa ? caps.chafaVersion : 'not installed'} · backend: ${caps.chafa ? 'chafa-symbols' : 'half-block'}`}
-    />
+  return (
+    <Box flexDirection="column">
+      <Header
+        title="Settings"
+        subtitle={`chafa: ${caps.chafa ? caps.chafaVersion : 'not installed'} · backend: ${caps.chafa ? 'chafa-symbols' : 'half-block'}`}
+      />
 
-    ${editing
-      ? html`<${Box} flexDirection="column">
-          <${Text} color="cyanBright">${editing === 'addPath' ? 'New library path (folder of manga / CBZ):' : 'Language code (e.g. en, fr, ja):'}<//>
-          <${Box}>
-            <${Text} color="cyanBright">${'› '}<//>
-            <${TextInput} value=${draft} onChange=${setDraft} onSubmit=${submitEdit} focus=${true} />
-          <//>
-          <${KeyHints} hints=${[['enter', 'save'], ['esc', 'cancel']]} />
-        <//>`
-      : html`<${Box} flexDirection="column">
-          <${List}
-            items=${items}
-            isActive=${true}
-            height=${Math.max(6, (ui.dimensions.rows || 24) - 7)}
-            onSelect=${activate}
-            onHighlight=${(it) => setHighlighted(it)}
-            renderItem=${(it, active) => html`<${Box} key=${it.id} justifyContent="space-between">
-              <${Text} inverse=${active} color=${active ? 'cyanBright' : it.kind === 'path' ? 'blue' : undefined}>
-                ${' '}${it.label}${' '}
-              <//>
-              ${it.value ? html`<${Text} dimColor>${it.value}<//>` : null}
-            <//>`}
+      {editing ? (
+        <Box flexDirection="column">
+          <Text color="cyanBright">
+            {editing === 'addPath' ? 'New library path (folder of manga / CBZ):' : 'Language code (e.g. en, fr, ja):'}
+          </Text>
+          <Box>
+            <Text color="cyanBright">{'› '}</Text>
+            <TextInput value={draft} onChange={setDraft} onSubmit={submitEdit} focus={true} />
+          </Box>
+          <KeyHints hints={[['enter', 'save'], ['esc', 'cancel']]} />
+        </Box>
+      ) : (
+        <Box flexDirection="column">
+          <List
+            items={items}
+            isActive={true}
+            height={Math.max(6, (ui.dimensions.rows || 24) - 7)}
+            onSelect={activate}
+            onHighlight={(it) => setHighlighted(it)}
+            renderItem={(it, active) => (
+              <Box key={it.id} justifyContent="space-between">
+                <Text inverse={active} color={active ? 'cyanBright' : it.kind === 'path' ? 'blue' : undefined}>
+                  {` ${it.label} `}
+                </Text>
+                {it.value ? <Text dimColor>{it.value}</Text> : null}
+              </Box>
+            )}
           />
-          <${KeyHints} hints=${[['↑↓', 'move'], ['enter', 'change'], ['d', 'remove path'], ['esc', 'back']]} />
-        <//>`}
-  <//>`;
+          <KeyHints hints={[['↑↓', 'move'], ['enter', 'change'], ['d', 'remove path'], ['esc', 'back']]} />
+        </Box>
+      )}
+    </Box>
+  );
 }

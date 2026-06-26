@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
-import { html } from '../../html.js';
 import { useUI } from '../../ui-context.js';
 import { getSource } from '../../sources/index.js';
 import { List } from '../List.js';
@@ -76,45 +75,49 @@ export function SearchScreen({ params }) {
 
   const listHeight = Math.max(4, (ui.dimensions.rows || 24) - 9);
 
-  return html`<${Box} flexDirection="column">
-    <${Header}
-      title=${source.label}
-      subtitle=${sourceId === 'local' ? 'filter your local library' : 'search the online catalog'}
-    />
-    <${Box}>
-      <${Text} color=${focusInput ? 'cyanBright' : 'gray'}>${focusInput ? '› ' : '  '}<//>
-      <${TextInput}
-        value=${query}
-        onChange=${setQuery}
-        onSubmit=${onSubmit}
-        focus=${focusInput}
-        placeholder=${sourceId === 'local' ? 'type to filter…' : 'type a title, enter to search…'}
+  return (
+    <Box flexDirection="column">
+      <Header
+        title={source.label}
+        subtitle={sourceId === 'local' ? 'filter your local library' : 'search the online catalog'}
       />
-    <//>
-    ${loading ? html`<${Box} marginTop=${1}><${Spinner} label="Loading" /><//>` : null}
-    ${error ? html`<${Box} marginTop=${1}><${ErrorView} error=${error} /><//>` : null}
-    ${!error && submitted !== null
-      ? html`<${Box} flexDirection="column" marginTop=${1}>
-          <${List}
-            items=${results}
-            isActive=${!focusInput}
-            height=${listHeight}
-            onSelect=${(m) => ui.navigate('manga', { sourceId, manga: m })}
-            onHighlight=${onHighlight}
-            emptyText=${loading ? ' ' : submitted === '' ? 'Nothing found.' : `No results for "${submitted}".`}
-            renderItem=${(m, active) => html`<${Box} key=${m.key}>
-              <${Text} inverse=${active} color=${active ? 'cyanBright' : undefined}>
-                ${' '}${truncate(m.title, Math.max(20, (ui.dimensions.cols || 80) - 24))}${' '}
-              <//>
-              <${Text} dimColor>  ${m.source === 'local' ? `${m.chaptersCount ?? '?'} ch` : m.status || ''}<//>
-            <//>`}
+      <Box>
+        <Text color={focusInput ? 'cyanBright' : 'gray'}>{focusInput ? '› ' : '  '}</Text>
+        <TextInput
+          value={query}
+          onChange={setQuery}
+          onSubmit={onSubmit}
+          focus={focusInput}
+          placeholder={sourceId === 'local' ? 'type to filter…' : 'type a title, enter to search…'}
+        />
+      </Box>
+      {loading ? <Box marginTop={1}><Spinner label="Loading" /></Box> : null}
+      {error ? <Box marginTop={1}><ErrorView error={error} /></Box> : null}
+      {!error && submitted !== null ? (
+        <Box flexDirection="column" marginTop={1}>
+          <List
+            items={results}
+            isActive={!focusInput}
+            height={listHeight}
+            onSelect={(m) => ui.navigate('manga', { sourceId, manga: m })}
+            onHighlight={onHighlight}
+            emptyText={loading ? ' ' : submitted === '' ? 'Nothing found.' : `No results for "${submitted}".`}
+            renderItem={(m, active) => (
+              <Box key={m.key}>
+                <Text inverse={active} color={active ? 'cyanBright' : undefined}>
+                  {` ${truncate(m.title, Math.max(20, (ui.dimensions.cols || 80) - 24))} `}
+                </Text>
+                <Text dimColor>{`  ${m.source === 'local' ? `${m.chaptersCount ?? '?'} ch` : m.status || ''}`}</Text>
+              </Box>
+            )}
           />
-        <//>`
-      : null}
-    <${KeyHints}
-      hints=${focusInput
-        ? [['enter', 'search'], ['esc', 'to results']]
-        : [['↑↓', 'move'], ['enter', 'open'], ['/', 'search'], ['esc', 'back']]}
-    />
-  <//>`;
+        </Box>
+      ) : null}
+      <KeyHints
+        hints={focusInput
+          ? [['enter', 'search'], ['esc', 'to results']]
+          : [['↑↓', 'move'], ['enter', 'open'], ['/', 'search'], ['esc', 'back']]}
+      />
+    </Box>
+  );
 }

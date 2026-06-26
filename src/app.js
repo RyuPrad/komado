@@ -1,6 +1,5 @@
 import { useState, useCallback } from 'react';
 import { Box, useApp, useInput } from 'ink';
-import { html } from './html.js';
 import { UIContext } from './ui-context.js';
 import { useStdoutDimensions } from './hooks/useStdoutDimensions.js';
 import { flushProgress } from './state/store.js';
@@ -47,9 +46,11 @@ export function App() {
 
   // Remount on each push/pop so screens start with fresh state. The key includes
   // the depth so navigating back rebuilds the previous screen.
-  return html`<${UIContext.Provider} value=${ctx}>
-    <${Box} flexDirection="column" paddingX=${1}>
-      <${Screen} key=${`${stack.length}:${current.name}`} params=${current.params} />
-    <//>
-  <//>`;
+  return (
+    <UIContext.Provider value={ctx}>
+      <Box flexDirection="column" paddingX={1}>
+        <Screen key={`${stack.length}:${current.name}`} params={current.params} />
+      </Box>
+    </UIContext.Provider>
+  );
 }

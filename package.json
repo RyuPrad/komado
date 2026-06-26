@@ -4,11 +4,22 @@
   "description": "A terminal manga reader (MangaDex + local files) rendered with Ink.",
   "type": "module",
   "bin": {
-    "manga-tui": "src/cli.js"
+    "manga-tui": "dist/cli.js"
   },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
   "scripts": {
-    "start": "node src/cli.js",
-    "doctor": "node src/cli.js doctor"
+    "build": "node scripts/build.mjs",
+    "prepare": "node scripts/build.mjs",
+    "prestart": "node scripts/build.mjs",
+    "start": "node dist/cli.js",
+    "dev": "node scripts/build.mjs && node dist/cli.js",
+    "doctor": "node scripts/build.mjs && node dist/cli.js doctor",
+    "lint": "eslint src test",
+    "test": "vitest run"
   },
   "engines": {
     "node": ">=20"
@@ -16,11 +27,20 @@
   "license": "MIT",
   "dependencies": {
     "adm-zip": "^0.5.16",
-    "htm": "^3.1.1",
     "ink": "^5.1.0",
     "ink-text-input": "^6.0.0",
     "node-unrar-js": "^2.0.2",
     "react": "^18.3.1",
     "sharp": "^0.33.5"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "esbuild": "^0.28.1",
+    "eslint": "^9.39.4",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.7.0",
+    "ink-testing-library": "^4.0.0",
+    "vitest": "^3.2.6"
   }
 }

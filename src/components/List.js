@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { html } from '../html.js';
 
 // Reusable windowed, keyboard-driven list. The parent supplies `renderItem`
 // (which must set a `key`) and gets `onSelect`/`onHighlight` callbacks.
@@ -15,39 +14,42 @@ export function List({
   emptyText = 'Nothing here yet.',
 }) {
   const [index, setIndex] = useState(0);
+  const count = items.length;
+  // Clamp on read instead of in an effect, so a shrinking list can't leave the
+  // selection out of range (and there's no cascading setState-in-effect).
+  const selected = count ? Math.min(index, count - 1) : 0;
 
-  // Keep selection in range as items load/change.
   useEffect(() => {
-    setIndex((i) => Math.max(0, Math.min(i, items.length - 1)));
-  }, [items.length]);
-
-  useEffect(() => {
-    if (items.length) onHighlight?.(items[Math.min(index, items.length - 1)], index);
-  }, [index, items]);
+    if (count) onHighlight?.(items[selected], selected);
+    // onHighlight is intentionally omitted: callers pass an inline closure.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, items]);
 
   useInput((input, key) => {
-    if (!items.length) return;
-    if (key.downArrow || input === 'j') setIndex((i) => Math.min(items.length - 1, i + 1));
-    else if (key.upArrow || input === 'k') setIndex((i) => Math.max(0, i - 1));
-    else if (key.pageDown) setIndex((i) => Math.min(items.length - 1, i + height));
-    else if (key.pageUp) setIndex((i) => Math.max(0, i - height));
+    if (!count) return;
+    if (key.downArrow || input === 'j') setIndex(Math.min(count - 1, selected + 1));
+    else if (key.upArrow || input === 'k') setIndex(Math.max(0, selected - 1));
+    else if (key.pageDown) setIndex(Math.min(count - 1, selected + height));
+    else if (key.pageUp) setIndex(Math.max(0, selected - height));
     else if (input === 'g') setIndex(0);
-    else if (input === 'G') setIndex(items.length - 1);
-    else if (key.return) onSelect?.(items[index], index);
+    else if (input === 'G') setIndex(count - 1);
+    else if (key.return) onSelect?.(items[selected], selected);
   }, { isActive });
 
-  if (!items.length) {
-    return html`<${Text} dimColor>${emptyText}<//>`;
+  if (!count) {
+    return <Text dimColor>{emptyText}</Text>;
   }
 
   // Vertical window centred on the selection.
-  const start = Math.max(0, Math.min(index - Math.floor(height / 2), Math.max(0, items.length - height)));
+  const start = Math.max(0, Math.min(selected - Math.floor(height / 2), Math.max(0, count - height)));
   const slice = items.slice(start, start + height);
 
-  return html`<${Box} flexDirection="column">
-    ${slice.map((item, i) => renderItem(item, start + i === index, start + i))}
-    ${items.length > height
-      ? html`<${Text} key="more" dimColor>  · ${index + 1}/${items.length} ·<//>`
-      : null}
-  <//>`;
+  return (
+    <Box flexDirection="column">
+      {slice.map((item, i) => renderItem(item, start + i === selected, start + i))}
+      {count > height ? (
+        <Text key="more" dimColor>{`  · ${selected + 1}/${count} ·`}</Text>
+      ) : null}
+    </Box>
+  );
 }

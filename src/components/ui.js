@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { Box, Text } from 'ink';
-import { html } from '../html.js';
 
 const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
@@ -12,26 +11,32 @@ export function Spinner({ label = 'Loading' }) {
     const t = setInterval(() => setFrame((f) => (f + 1) % FRAMES.length), 80);
     return () => clearInterval(t);
   }, []);
-  return html`<${Text} color="cyan">${FRAMES[frame]} ${label}…<//>`;
+  return <Text color="cyan">{`${FRAMES[frame]} ${label}…`}</Text>;
 }
 
 export function Header({ title, subtitle }) {
-  return html`<${Box} flexDirection="column" marginBottom=${1}>
-    <${Text} color="magentaBright" bold>${title}<//>
-    ${subtitle ? html`<${Text} dimColor>${subtitle}<//>` : null}
-  <//>`;
+  return (
+    <Box flexDirection="column" marginBottom={1}>
+      <Text color="magentaBright" bold>{title}</Text>
+      {subtitle ? <Text dimColor>{subtitle}</Text> : null}
+    </Box>
+  );
 }
 
 export function ErrorView({ error }) {
-  return html`<${Box} flexDirection="column">
-    <${Text} color="red" bold>✖ ${error?.message || 'Something went wrong'}<//>
-    ${error?.statusCode ? html`<${Text} dimColor>status ${error.statusCode}<//>` : null}
-  <//>`;
+  return (
+    <Box flexDirection="column">
+      <Text color="red" bold>{`✖ ${error?.message || 'Something went wrong'}`}</Text>
+      {error?.statusCode ? <Text dimColor>{`status ${error.statusCode}`}</Text> : null}
+    </Box>
+  );
 }
 
 // Footer key legend. `hints` is an array of [key, label] pairs.
 export function KeyHints({ hints = [] }) {
-  return html`<${Box} marginTop=${1}>
-    <${Text} dimColor>${hints.map(([k, l]) => `${k} ${l}`).join('   ')}<//>
-  <//>`;
+  return (
+    <Box marginTop={1}>
+      <Text dimColor>{hints.map(([k, l]) => `${k} ${l}`).join('   ')}</Text>
+    </Box>
+  );
 }

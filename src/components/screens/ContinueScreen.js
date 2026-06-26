@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { Box, Text } from 'ink';
-import { html } from '../../html.js';
 import { useUI } from '../../ui-context.js';
 import { getSource } from '../../sources/index.js';
 import { getAllProgress } from '../../state/store.js';
@@ -41,23 +40,34 @@ export function ContinueScreen() {
     }
   };
 
-  if (loading) return html`<${Box} flexDirection="column"><${Header} title="Continue reading" /><${Spinner} label="Opening" /><//>`;
+  if (loading) {
+    return (
+      <Box flexDirection="column">
+        <Header title="Continue reading" />
+        <Spinner label="Opening" />
+      </Box>
+    );
+  }
 
-  return html`<${Box} flexDirection="column">
-    <${Header} title="Continue reading" subtitle="pick up where you left off" />
-    ${error ? html`<${ErrorView} error=${error} />` : null}
-    <${List}
-      items=${entries}
-      height=${Math.max(5, (ui.dimensions.rows || 24) - 7)}
-      onSelect=${open}
-      emptyText="No reading history yet."
-      renderItem=${(e, active) => html`<${Box} key=${`${e.source}:${e.mangaId}`} justifyContent="space-between">
-        <${Text} inverse=${active} color=${active ? 'cyanBright' : undefined}>
-          ${' '}${truncate(e.mangaTitle || e.mangaId, 40)} · ${e.chapterNumber != null ? `Ch.${e.chapterNumber}` : 'Oneshot'} p.${(e.page || 0) + 1}${' '}
-        <//>
-        <${Text} dimColor>${relativeTime(e.updatedAt)}<//>
-      <//>`}
-    />
-    <${KeyHints} hints=${[['↑↓', 'move'], ['enter', 'resume'], ['esc', 'back']]} />
-  <//>`;
+  return (
+    <Box flexDirection="column">
+      <Header title="Continue reading" subtitle="pick up where you left off" />
+      {error ? <ErrorView error={error} /> : null}
+      <List
+        items={entries}
+        height={Math.max(5, (ui.dimensions.rows || 24) - 7)}
+        onSelect={open}
+        emptyText="No reading history yet."
+        renderItem={(e, active) => (
+          <Box key={`${e.source}:${e.mangaId}`} justifyContent="space-between">
+            <Text inverse={active} color={active ? 'cyanBright' : undefined}>
+              {` ${truncate(e.mangaTitle || e.mangaId, 40)} · ${e.chapterNumber != null ? `Ch.${e.chapterNumber}` : 'Oneshot'} p.${(e.page || 0) + 1} `}
+            </Text>
+            <Text dimColor>{relativeTime(e.updatedAt)}</Text>
+          </Box>
+        )}
+      />
+      <KeyHints hints={[['↑↓', 'move'], ['enter', 'resume'], ['esc', 'back']]} />
+    </Box>
+  );
 }

@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
-import { html } from '../../html.js';
 import { useUI } from '../../ui-context.js';
 import { getSource } from '../../sources/index.js';
 import { getProgress } from '../../state/store.js';
@@ -62,41 +61,52 @@ export function MangaScreen({ params }) {
   const cols = ui.dimensions.cols || 80;
   const resumeChapterId = progress?.chapterId;
 
-  return html`<${Box} flexDirection="column">
-    <${Header}
-      title=${truncate(manga.title, cols - 4)}
-      subtitle=${[manga.authors?.join(', '), manga.status].filter(Boolean).join(' · ')}
-    />
-    ${manga.tags?.length
-      ? html`<${Text} color="blue">${truncate(manga.tags.join(' · '), cols - 4)}<//>`
-      : null}
-    ${manga.description
-      ? html`<${Box} marginTop=${1} width=${cols - 4}>
-          <${Text} dimColor wrap="truncate-end">${truncate(manga.description.replace(/\s+/g, ' '), (cols - 4) * 3)}<//>
-        <//>`
-      : null}
-    ${progress
-      ? html`<${Box} marginTop=${1}><${Text} color="green">▶ Resume Ch.${progress.chapterNumber ?? '?'} p.${(progress.page || 0) + 1}  (press r)<//><//>`
-      : null}
+  return (
+    <Box flexDirection="column">
+      <Header
+        title={truncate(manga.title, cols - 4)}
+        subtitle={[manga.authors?.join(', '), manga.status].filter(Boolean).join(' · ')}
+      />
+      {manga.tags?.length ? (
+        <Text color="blue">{truncate(manga.tags.join(' · '), cols - 4)}</Text>
+      ) : null}
+      {manga.description ? (
+        <Box marginTop={1} width={cols - 4}>
+          <Text dimColor wrap="truncate-end">
+            {truncate(manga.description.replace(/\s+/g, ' '), (cols - 4) * 3)}
+          </Text>
+        </Box>
+      ) : null}
+      {progress ? (
+        <Box marginTop={1}>
+          <Text color="green">{`▶ Resume Ch.${progress.chapterNumber ?? '?'} p.${(progress.page || 0) + 1}  (press r)`}</Text>
+        </Box>
+      ) : null}
 
-    <${Box} marginTop=${1} flexDirection="column">
-      <${Text} bold>Chapters ${chapters.length ? `(${chapters.length})` : ''}<//>
-      ${loading ? html`<${Spinner} label="Loading chapters" />` : null}
-      ${error ? html`<${ErrorView} error=${error} />` : null}
-      ${!loading && !error
-        ? html`<${List}
-            items=${chapters}
-            height=${Math.max(4, (ui.dimensions.rows || 24) - 12)}
-            onSelect=${(_c, index) => openAt(index)}
+      <Box marginTop={1} flexDirection="column">
+        <Text bold>{`Chapters ${chapters.length ? `(${chapters.length})` : ''}`}</Text>
+        {loading ? <Spinner label="Loading chapters" /> : null}
+        {error ? <ErrorView error={error} /> : null}
+        {!loading && !error ? (
+          <List
+            items={chapters}
+            height={Math.max(4, (ui.dimensions.rows || 24) - 12)}
+            onSelect={(_c, index) => openAt(index)}
             emptyText="No chapters available in this language (try changing language in Settings)."
-            renderItem=${(ch, active) => html`<${Box} key=${ch.id}>
-              <${Text} inverse=${active} color=${active ? 'cyanBright' : ch.id === resumeChapterId ? 'green' : undefined}>
-                ${' '}${ch.id === resumeChapterId ? '▶ ' : '  '}${truncate(chapterLabel(ch), cols - 8)}${' '}
-              <//>
-            <//>`}
-          />`
-        : null}
-    <//>
-    <${KeyHints} hints=${[['↑↓', 'move'], ['enter', 'read'], ...(progress ? [['r', 'resume']] : []), ['esc', 'back']]} />
-  <//>`;
+            renderItem={(ch, active) => (
+              <Box key={ch.id}>
+                <Text
+                  inverse={active}
+                  color={active ? 'cyanBright' : ch.id === resumeChapterId ? 'green' : undefined}
+                >
+                  {` ${ch.id === resumeChapterId ? '▶ ' : '  '}${truncate(chapterLabel(ch), cols - 8)} `}
+                </Text>
+              </Box>
+            )}
+          />
+        ) : null}
+      </Box>
+      <KeyHints hints={[['↑↓', 'move'], ['enter', 'read'], ...(progress ? [['r', 'resume']] : []), ['esc', 'back']]} />
+    </Box>
+  );
 }

@@ -39,22 +39,23 @@ with [Ink](https://github.com/vadimdemedes/ink).
 ## Install & run
 
 ```bash
-npm install
-npm start            # or: node src/cli.js
+npm install     # also builds dist/ via the prepare script
+npm start       # rebuilds, then launches the reader
 ```
 
-Check what your terminal supports and where state is stored:
+The UI is JSX, transpiled to `dist/` by esbuild (`npm run build`). Check what your
+terminal supports and where state is stored:
 
 ```bash
-node src/cli.js doctor
+npm run doctor
 ```
 
 Render a single image (path or URL) at the best fidelity your terminal allows — handy
 for testing sixel/kitty terminals:
 
 ```bash
-node src/cli.js render ./cover.jpg
-node src/cli.js render https://example.com/page.png 100
+node dist/cli.js render ./cover.jpg
+node dist/cli.js render https://example.com/page.png 100
 ```
 
 ## Keys
@@ -116,20 +117,27 @@ cli.js → app.js (screen stack) → screens → hooks/state → sources/* → H
 - **`src/components/*` + `src/hooks/*`** — Ink UI. Effects use a cancelled-flag/abort
   guard against out-of-order responses, and reading progress writes are debounced.
 
-### A note on `htm` vs JSX
+## Development
 
-UI is written with [`htm`](https://github.com/developit/htm) template literals instead of
-JSX, so `node src/cli.js` runs with **no build step**. The syntax is close to JSX
-(`html\`<${Box}>…<//>\``). Trade-off: because components are referenced inside template
-literals, ESLint can’t statically see them “used,” so linting isn’t wired up here. If you
-prefer JSX + ESLint, swap `htm` for an `esbuild`/`tsx` build — the component code ports
-directly.
+UI is plain JSX in `.js` files, transpiled to `dist/` by esbuild (a small
+`scripts/build.mjs` does a transpile-only, structure-preserving build — no bundling,
+so package imports stay external).
+
+```bash
+npm run build    # src/ → dist/  (esbuild, JSX automatic runtime)
+npm run lint     # ESLint 9 (flat config, eslint-plugin-react + react-hooks)
+npm test         # Vitest: lib/source unit tests + an ink-testing-library UI test
+```
+
+`npm test` covers the cache, backoff, envelope, natural sort, MangaDex normalization,
+the local source (folder + `.cbz` + `.cbr`), and an end-to-end UI walk (home → local
+manga → reader) via ink-testing-library. The `.cbr` test is skipped automatically where
+the `rar` binary isn't available.
 
 ## Roadmap
 
 - True sixel/kitty fullscreen page view (beyond the standalone `render` command)
 - On-disk page cache for offline re-reads of MangaDex chapters
-- Tests (Vitest + ink-testing-library) and CI
 
 ## Legal
 

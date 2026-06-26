@@ -1,5 +1,4 @@
 import { Box, Text } from 'ink';
-import { html } from '../../html.js';
 import { useUI } from '../../ui-context.js';
 import { List } from '../List.js';
 import { Header, KeyHints } from '../ui.js';
@@ -30,17 +29,23 @@ export function HomeScreen() {
     }
   };
 
-  return html`<${Box} flexDirection="column">
-    <${Header} title="manga-tui" subtitle="a terminal manga reader · MangaDex + local files" />
-    <${List}
-      items=${items}
-      height=${items.length}
-      onSelect=${onSelect}
-      renderItem=${(item, active) => html`<${Box} key=${item.id}>
-        <${Text} inverse=${active} color=${active ? 'cyanBright' : undefined}> ${active ? '›' : ' '} ${item.label} <//>
-        ${item.hint ? html`<${Text} dimColor>  ${item.hint}<//>` : null}
-      <//>`}
-    />
-    <${KeyHints} hints=${[['↑↓', 'move'], ['enter', 'select'], ['q', 'quit']]} />
-  <//>`;
+  return (
+    <Box flexDirection="column">
+      <Header title="manga-tui" subtitle="a terminal manga reader · MangaDex + local files" />
+      <List
+        items={items}
+        height={items.length}
+        onSelect={onSelect}
+        renderItem={(item, active) => (
+          <Box key={item.id}>
+            <Text inverse={active} color={active ? 'cyanBright' : undefined}>
+              {` ${active ? '›' : ' '} ${item.label} `}
+            </Text>
+            {item.hint ? <Text dimColor>{`  ${item.hint}`}</Text> : null}
+          </Box>
+        )}
+      />
+      <KeyHints hints={[['↑↓', 'move'], ['enter', 'select'], ['q', 'quit']]} />
+    </Box>
+  );
 }
