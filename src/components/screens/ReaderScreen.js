@@ -133,6 +133,11 @@ export function ReaderScreen({ params }) {
       chapterNumber: chapter.number,
       page: pageIndex,
     });
+    // Reaching the last page = finished the chapter → push a read-marker to
+    // MangaDex. Self-guarded (login + setting) and deduped inside the source.
+    if (pageIndex === pages.length - 1 && source.syncChapterRead) {
+      source.syncChapterRead(manga.id, chapter.id);
+    }
   }, [pageIndex, chapter?.id, status]);
 
   // --- Navigation helpers ---

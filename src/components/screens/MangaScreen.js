@@ -3,6 +3,7 @@ import { Box, Text, useInput } from 'ink';
 import { useUI } from '../../ui-context.js';
 import { getSource } from '../../sources/index.js';
 import { getProgress } from '../../state/store.js';
+import { isLoggedIn } from '../../sources/mangadex/auth.js';
 import { chapterLabel } from '../../domain/shape.js';
 import { List } from '../List.js';
 import { Header, Spinner, ErrorView, KeyHints } from '../ui.js';
@@ -17,6 +18,7 @@ export function MangaScreen({ params }) {
   const [chapters, setChapters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [readSet, setReadSet] = useState(null); // chapter ids read on MangaDex
   const progress = getProgress(initial.key);
 
   useEffect(() => {
@@ -33,6 +35,12 @@ export function MangaScreen({ params }) {
         if (cancelled) return;
         setManga(full);
         setChapters(chRes.data);
+        // Decorate the list with MangaDex read-markers (logged-in only).
+        if (isLoggedIn() && source.getReadMarkers) {
+          source.getReadMarkers(initial.id, { signal: ctrl.signal })
+            .then((ids) => { if (!cancelled) setReadSet(new Set(ids)); })
+            .catch(() => {}); // decorative — never block the screen on this
+        }
       } catch (err) {
         if (!cancelled) setError(err);
       } finally {
@@ -93,16 +101,21 @@ export function MangaScreen({ params }) {
             height={Math.max(4, (ui.dimensions.rows || 24) - 12)}
             onSelect={(_c, index) => openAt(index)}
             emptyText="No chapters available in this language (try changing language in Settings)."
-            renderItem={(ch, active) => (
-              <Box key={ch.id}>
-                <Text
-                  inverse={active}
-                  color={active ? 'cyanBright' : ch.id === resumeChapterId ? 'green' : undefined}
-                >
-                  {` ${ch.id === resumeChapterId ? '▶ ' : '  '}${truncate(chapterLabel(ch), cols - 8)} `}
-                </Text>
-              </Box>
-            )}
+            renderItem={(ch, active) => {
+              const isResume = ch.id === resumeChapterId;
+              const read = readSet?.has(ch.id);
+              return (
+                <Box key={ch.id}>
+                  <Text
+                    inverse={active}
+                    color={active ? 'cyanBright' : isResume ? 'green' : undefined}
+                    dimColor={!active && read && !isResume}
+                  >
+                    {` ${isResume ? '▶ ' : read ? '✓ ' : '  '}${truncate(chapterLabel(ch), cols - 8)} `}
+                  </Text>
+                </Box>
+              );
+            }}
           />
         ) : null}
       </Box>

@@ -11,6 +11,7 @@ export const paths = {
   home: HOME,
   configFile: path.join(HOME, 'config.json'),
   progressFile: path.join(HOME, 'progress.json'),
+  credentialsFile: path.join(HOME, 'credentials.json'),
   cacheDir: path.join(HOME, 'cache'),
   logFile: path.join(HOME, 'manga-tui.log'),
 };
@@ -27,10 +28,12 @@ export const DEFAULT_CONFIG = {
   dataSaver: true,         // smaller MangaDex page images — ideal for a terminal
   renderer: 'auto',        // auto | halfblock | chafa
   theme: 'default',
+  syncProgress: true,      // push read-markers to MangaDex while logged in
 };
 
 export const MANGADEX = {
   api: 'https://api.mangadex.org',
+  auth: 'https://auth.mangadex.org/realms/mangadex/protocol/openid-connect/token',
   uploads: 'https://uploads.mangadex.org',
   userAgent: 'manga-tui/0.1 (+https://github.com/RyuPrad/manga-tui)',
   pageLimit: 20,

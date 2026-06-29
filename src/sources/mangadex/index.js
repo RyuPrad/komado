@@ -1,4 +1,5 @@
-import { mdGet } from './client.js';
+import { mdGet, mdSend } from './client.js';
+import { isLoggedIn } from './auth.js';
 import { normalizeManga, normalizeChapter } from './normalize.js';
 import { fetchWithBackoff } from '../../lib/fetchWithBackoff.js';
 import { createCache } from '../../lib/cache.js';
@@ -7,6 +8,7 @@ import { NotFoundError } from '../../lib/AppError.js';
 import { MANGADEX } from '../../config.js';
 import { globalKey } from '../../domain/shape.js';
 import { getConfig } from '../../state/store.js';
+import { logger } from '../../lib/logger.js';
 
 export const id = 'mangadex';
 export const label = 'MangaDex';
@@ -113,4 +115,52 @@ export async function loadPageBuffer(page, { signal } = {}) {
   });
   if (!res.ok) throw new NotFoundError(`Failed to load page ${page.index} (${res.status})`);
   return Buffer.from(await res.arrayBuffer());
+}
+
+// ---- Authenticated features (require login) ----------------------------
+
+// The signed-in user's followed manga, normalized like search results.
+export async function getFollows({ offset = 0, limit = MANGADEX.pageLimit, signal } = {}) {
+  // /user/follows/manga rejects contentRating[] (HTTP 400) — it returns ALL of
+  // the user's follows regardless of rating, which is what we want here anyway.
+  const res = await mdGet('/user/follows/manga', {
+    limit,
+    offset,
+    includes: ['cover_art', 'author', 'artist'],
+  }, { signal, auth: true });
+  const data = (res.data || []).map(normalizeManga);
+  return envelope(data, {
+    pagination: paginate({ offset: res.offset, limit: res.limit, total: res.total }),
+    meta: { source: id },
+  });
+}
+
+// Chapter IDs the user has marked read for this manga (for decorating the list).
+export async function getReadMarkers(mangaId, { signal } = {}) {
+  const res = await mdGet(`/manga/${mangaId}/read`, null, { signal, auth: true });
+  return res.data || [];
+}
+
+export async function markChaptersRead(mangaId, chapterIdsRead, { signal } = {}) {
+  if (!chapterIdsRead?.length) return;
+  await mdSend('POST', `/manga/${mangaId}/read`, {
+    chapterIdsRead,
+    chapterIdsUnread: [],
+  }, { signal });
+}
+
+// Fire-and-forget read-marker push when a chapter is finished. Self-guards on
+// login + the syncProgress setting and dedupes per session, so a reader can
+// call it freely (e.g. on every settle at the last page) without spamming.
+const pushedRead = new Set();
+export async function syncChapterRead(mangaId, chapterId) {
+  if (!chapterId || pushedRead.has(chapterId)) return;
+  if (!isLoggedIn() || !getConfig().syncProgress) return;
+  pushedRead.add(chapterId);
+  try {
+    await markChaptersRead(mangaId, [chapterId]);
+  } catch (err) {
+    pushedRead.delete(chapterId); // let a later attempt retry
+    logger.warn('failed to push read marker', err);
+  }
 }

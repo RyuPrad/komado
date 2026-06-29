@@ -27,6 +27,9 @@ with [Ink](https://github.com/vadimdemedes/ink).
   toggle, runtime renderer switching, and next-page prefetch.
 - **Reading progress.** Where you left off is saved per manga and resumable from
   *Continue reading*.
+- **Sign in to MangaDex (optional).** Log in to browse your **followed library**, see
+  which chapters you've already read, and **sync progress back** — finishing a chapter
+  marks it read on MangaDex. Reading itself needs no account.
 - **Offline-friendly.** Point it at folders of `.cbz`/`.zip` or loose images.
 
 ## Requirements
@@ -87,6 +90,28 @@ Readable text needs real pixels. At startup the app probes your terminal (run
 Terminals with pixel support include kitty, WezTerm, Ghostty, foot, recent
 Windows Terminal (≥ 1.22), and VS Code's terminal (with image support enabled).
 
+## MangaDex account (optional)
+
+Reading from MangaDex needs **no account**. Signing in only adds personalization:
+
+- **My Library** — browse the manga you follow on MangaDex.
+- **Read-markers** — chapters you've already read are marked in the chapter list.
+- **Progress sync** — finishing a chapter pushes a read-marker back to MangaDex.
+
+MangaDex uses OAuth2 **personal clients**, so logging in is a one-time setup:
+
+1. On [mangadex.org](https://mangadex.org) → **Settings → API Clients**, create a
+   personal client and note its **client ID** and **client secret**. (A new client may
+   need staff approval before it works.)
+2. In the app: **Settings → Log in to MangaDex…**, then enter the client id/secret plus
+   your MangaDex username and password.
+
+The session is **durable** — it requests an `offline_access` token and persists it, so
+you stay logged in across restarts until you explicitly **log out** (Settings). Only the
+client id/secret + refresh token are stored, in `~/.manga-tui/credentials.json` (mode
+`600`); your password is never written to disk. Toggle write-back any time with
+**Settings → Sync reading progress**.
+
 ## Local library layout
 
 Add library folders in **Settings → Add library path…**. Within a library folder:
@@ -109,6 +134,7 @@ Everything is self-contained under `~/.manga-tui/` (override with `MANGA_TUI_HOM
 
 - `config.json` — preferences + library paths
 - `progress.json` — reading progress
+- `credentials.json` — MangaDex login (client id/secret + refresh token; mode `600`)
 - `cache/` — scratch space for the renderer
 
 ## Architecture
@@ -146,9 +172,10 @@ npm test         # Vitest: lib/source unit tests + an ink-testing-library UI tes
 ```
 
 `npm test` covers the cache, backoff, envelope, natural sort, MangaDex normalization,
-the local source (folder + `.cbz` + `.cbr`), and an end-to-end UI walk (home → local
-manga → reader) via ink-testing-library. The `.cbr` test is skipped automatically where
-the `rar` binary isn't available.
+MangaDex auth (token refresh, offline-scope fallback, session handling) and the authed
+source methods, the local source (folder + `.cbz` + `.cbr`), and an end-to-end UI walk
+(home → local manga → reader) via ink-testing-library. The `.cbr` test is skipped
+automatically where the `rar` binary isn't available.
 
 ## Roadmap
 

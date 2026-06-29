@@ -61,3 +61,30 @@ export function flushProgress() {
   clearTimeout(saveTimer);
   if (progress) writeJsonAtomic(paths.progressFile, progress);
 }
+
+// ---- MangaDex credentials (OAuth2 personal client) ---------------------
+// Only the durable secrets live here: the client id/secret and the rotating
+// refresh token. The 15-min access token is kept in memory by auth.js and
+// never written to disk. File is 0600 since it holds a long-lived secret.
+let credentials = null;
+function writeCredentialsAtomic(data) {
+  ensureDirs();
+  const file = paths.credentialsFile;
+  const tmp = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(data, null, 2), { mode: 0o600 });
+  fs.renameSync(tmp, file);
+  try { fs.chmodSync(file, 0o600); } catch { /* best effort (e.g. Windows) */ }
+}
+export function getCredentials() {
+  if (credentials === null) credentials = readJson(paths.credentialsFile, {});
+  return credentials.refreshToken ? credentials : null;
+}
+export function setCredentials(next) {
+  credentials = { ...next };
+  writeCredentialsAtomic(credentials);
+  return credentials;
+}
+export function clearCredentials() {
+  credentials = {};
+  try { fs.rmSync(paths.credentialsFile, { force: true }); } catch { /* ignore */ }
+}

@@ -9,6 +9,8 @@ import { MangaScreen } from './components/screens/MangaScreen.js';
 import { ReaderScreen } from './components/screens/ReaderScreen.js';
 import { SettingsScreen } from './components/screens/SettingsScreen.js';
 import { ContinueScreen } from './components/screens/ContinueScreen.js';
+import { LoginScreen } from './components/screens/LoginScreen.js';
+import { LibraryScreen } from './components/screens/LibraryScreen.js';
 
 const SCREENS = {
   home: HomeScreen,
@@ -17,6 +19,8 @@ const SCREENS = {
   reader: ReaderScreen,
   settings: SettingsScreen,
   continue: ContinueScreen,
+  login: LoginScreen,
+  library: LibraryScreen,
 };
 
 export function App({ caps = {}, onViewer, initialRoute = null }) {

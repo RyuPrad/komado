@@ -74,6 +74,10 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
         chapterNumber: chapters[ci].number,
         page: pi,
       });
+      // Last page reached → push a read-marker to MangaDex (self-guarded/deduped).
+      if (pi === pages.length - 1 && source.syncChapterRead) {
+        source.syncChapterRead(manga.id, chapters[ci].id);
+      }
     } catch (err) {
       logger.warn('viewer draw failed', err);
       stdout.write(`${ESC}[2J${ESC}[H${ESC}[0m`);

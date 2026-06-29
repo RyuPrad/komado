@@ -21,3 +21,6 @@ export class SourceError extends AppError {
 export class UnsupportedError extends AppError {
   constructor(message = 'Unsupported', opts) { super(message, 422, opts); }
 }
+export class AuthError extends AppError {
+  constructor(message = 'Authentication required', opts) { super(message, 401, opts); }
+}

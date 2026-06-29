@@ -4,6 +4,7 @@ import TextInput from 'ink-text-input';
 import { useUI } from '../../ui-context.js';
 import { getConfig, setConfig } from '../../state/store.js';
 import { scan } from '../../sources/local/index.js';
+import { isLoggedIn, logout } from '../../sources/mangadex/auth.js';
 import { detectCapabilities } from '../../render/detect.js';
 import { List } from '../List.js';
 import { Header, KeyHints } from '../ui.js';
@@ -26,6 +27,9 @@ export function SettingsScreen() {
   const [editing, setEditing] = useState(null); // null | 'language' | 'addPath'
   const [draft, setDraft] = useState('');
   const [highlighted, setHighlighted] = useState(null);
+  const [, setTick] = useState(0); // force a re-render after login/logout
+
+  const loggedIn = isLoggedIn();
 
   useEffect(() => {
     ui.setTyping(!!editing);
@@ -35,6 +39,9 @@ export function SettingsScreen() {
   const save = (patch) => setCfg({ ...setConfig(patch) });
 
   const items = [
+    { id: 'account', kind: 'account', label: loggedIn ? 'MangaDex account' : 'Log in to MangaDex…',
+      value: loggedIn ? 'logged in · enter to log out' : 'enter to log in' },
+    ...(loggedIn ? [{ id: 'syncProgress', kind: 'toggle', label: 'Sync reading progress (MangaDex)', value: cfg.syncProgress ? 'on' : 'off' }] : []),
     { id: 'renderer', kind: 'cycle', label: 'Renderer', value: cfg.renderer + (caps.chafa ? '' : ' (chafa N/A)') },
     { id: 'dataSaver', kind: 'toggle', label: 'Data saver (smaller images)', value: cfg.dataSaver ? 'on' : 'off' },
     { id: 'rating', kind: 'cycle', label: 'Content rating', value: ratingLabel(cfg.contentRating) },
@@ -47,7 +54,11 @@ export function SettingsScreen() {
 
   const activate = (item) => {
     switch (item.kind) {
+      case 'account':
+        if (loggedIn) { logout(); return setTick((t) => t + 1); }
+        return ui.navigate('login');
       case 'toggle':
+        if (item.id === 'syncProgress') return save({ syncProgress: !cfg.syncProgress });
         return save({ dataSaver: !cfg.dataSaver });
       case 'cycle':
         if (item.id === 'renderer') return save({ renderer: cycle(RENDERERS, cfg.renderer) });
