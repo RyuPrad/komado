@@ -8,7 +8,7 @@ import { defineConfig } from 'vitest/config';
 // with esbuild's automatic runtime. JS is a subset of the JSX loader, so plain
 // modules pass through untouched.
 const jsxInJs = {
-  name: 'manga-tui:jsx-in-js',
+  name: 'komado:jsx-in-js',
   enforce: 'pre',
   async transform(code, id) {
     const file = id.split('?')[0];
@@ -32,7 +32,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['test/**/*.test.js'],
-    // Isolate runtime state from the real ~/.manga-tui.
-    env: { MANGA_TUI_HOME: path.join(os.tmpdir(), 'manga-tui-vitest-home') },
+    // Isolate runtime state from the real ~/.komado.
+    env: { KOMADO_HOME: path.join(os.tmpdir(), 'komado-vitest-home') },
   },
 });

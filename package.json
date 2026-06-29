@@ -1,10 +1,11 @@
 {
-  "name": "manga-tui",
+  "name": "komado",
   "version": "0.1.0",
   "description": "A terminal manga reader (MangaDex + local files) rendered with Ink.",
+  "keywords": ["manga", "mangadex", "reader", "terminal", "tui", "cli", "sixel", "cbz", "comic"],
   "type": "module",
   "bin": {
-    "manga-tui": "dist/cli.js"
+    "komado": "dist/cli.js"
   },
   "files": [
     "dist",
@@ -25,6 +26,9 @@
     "node": ">=20"
   },
   "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/RyuPrad/komado.git" },
+  "homepage": "https://github.com/RyuPrad/komado#readme",
+  "bugs": "https://github.com/RyuPrad/komado/issues",
   "dependencies": {
     "adm-zip": "^0.5.16",
     "ink": "^5.1.0",

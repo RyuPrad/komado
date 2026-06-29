@@ -20,7 +20,7 @@ export function detectCapabilities() {
   // Sixel is hard to probe without a terminal round-trip; trust an explicit hint
   // or a couple of known sixel-first terminals.
   const sixel =
-    /sixel/i.test(env.MANGA_TUI_CAPS || '') ||
+    /sixel/i.test(env.KOMADO_CAPS || '') ||
     term === 'foot' || term.includes('foot') || term.includes('mlterm');
 
   // We always emit 24-bit colour; non-truecolor terminals degrade gracefully.
