@@ -1,11 +1,11 @@
-# manga-tui
+# komado
 
 A terminal manga reader. Browse and read from **MangaDex** (online) or your **local
 library** (CBZ/ZIP archives and image folders), rendered straight into the terminal
 with [Ink](https://github.com/vadimdemedes/ink).
 
 ```
- manga-tui
+ komado
  a terminal manga reader · MangaDex + local files
 
   › Search MangaDex      online catalog
@@ -39,7 +39,22 @@ with [Ink](https://github.com/vadimdemedes/ink).
 - Optional but recommended: **`chafa`** for higher-fidelity rendering.
   - Debian/Ubuntu: `sudo apt install chafa` · macOS: `brew install chafa`
 
-## Install & run
+## Install
+
+One line — fetches the latest, builds it, and drops a `komado` launcher on your PATH:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/RyuPrad/komado/main/install.sh | bash
+```
+
+Then just type **`komado`**. Re-run that same command any time to update. It needs
+`git`, **Node ≥ 20**, and `npm`; it installs to `~/.local/share/komado` with the
+launcher in `~/.local/bin` (override via `KOMADO_APP_DIR` / `KOMADO_BIN_DIR`).
+
+Uninstall: `rm -rf ~/.local/share/komado ~/.local/bin/komado` (add `~/.komado` to also
+drop your saved progress and login).
+
+### From source (for development)
 
 ```bash
 npm install     # also builds dist/ via the prepare script
@@ -68,7 +83,7 @@ node dist/cli.js render https://example.com/page.png 100
 | Lists | `↑`/`↓` or `j`/`k`, `g`/`G`, `PgUp`/`PgDn` | move / jump / page |
 | Lists | `enter` | open · `/` focus search · `esc` back |
 | Reader | `↑`/`↓` or `j`/`k` | scroll within a page |
-| Reader | `←`/`→` or `h`/`l`, `space` | previous / next page |
+| Reader | `←`/`→` or `a`/`d`, `space` | previous / next page |
 | Reader | `N` / `P` | next / previous chapter |
 | Reader | `f` | toggle fit-to-screen |
 | Reader | `r` | cycle renderer (`auto` → `halfblock` → `chafa`) |
@@ -82,7 +97,7 @@ Readable text needs real pixels. At startup the app probes your terminal (run
 - **sixel or kitty graphics supported** → opening a chapter launches a
   full-resolution **pixel viewer** (chafa straight to the terminal). It renders
   full-width with vertical pan by default; press `f` to toggle whole-page fit.
-  Keys: `n`/`p` page · `↑`/`↓` pan · `N`/`P` chapter · `f` fit · `q` back.
+  Keys: `←`/`→` or `a`/`d` page · `↑`/`↓` pan · `N`/`P` chapter · `f` fit · `q` back.
 - **neither** → the in-Ink **cell reader** is used (Unicode half-blocks, or
   chafa symbols when available). Fine for art, coarse for small lettering —
   that's the hard ceiling of character-cell rendering.
@@ -108,7 +123,7 @@ MangaDex uses OAuth2 **personal clients**, so logging in is a one-time setup:
 
 The session is **durable** — it requests an `offline_access` token and persists it, so
 you stay logged in across restarts until you explicitly **log out** (Settings). Only the
-client id/secret + refresh token are stored, in `~/.manga-tui/credentials.json` (mode
+client id/secret + refresh token are stored, in `~/.komado/credentials.json` (mode
 `600`); your password is never written to disk. Toggle write-back any time with
 **Settings → Sync reading progress**.
 
@@ -130,7 +145,7 @@ archives are supported (RAR via the WASM `node-unrar-js`, no system binary neede
 
 ## Where state lives
 
-Everything is self-contained under `~/.manga-tui/` (override with `MANGA_TUI_HOME`):
+Everything is self-contained under `~/.komado/` (override with `KOMADO_HOME`):
 
 - `config.json` — preferences + library paths
 - `progress.json` — reading progress

@@ -53,7 +53,7 @@ export function App({ caps = {}, onViewer, initialRoute = null }) {
   const openReader = useCallback(
     (payload) => {
       const pixel = onViewer && (caps.sixel || caps.kitty) && caps.chafa
-        && !process.env.MANGA_TUI_NO_PIXEL; // escape hatch → force cell reader
+        && !process.env.KOMADO_NO_PIXEL; // escape hatch → force cell reader
       if (pixel) onViewer(payload);
       else navigate('reader', payload);
     },

@@ -9,7 +9,7 @@ import { scan } from '../src/sources/local/index.js';
 import { App } from '../src/app.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const lib = path.join(os.tmpdir(), `manga-tui-app-test-${process.pid}`);
+const lib = path.join(os.tmpdir(), `komado-app-test-${process.pid}`);
 
 beforeAll(async () => {
   fs.rmSync(lib, { recursive: true, force: true });

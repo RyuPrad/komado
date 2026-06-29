@@ -17,7 +17,7 @@ try {
   /* rar not installed — CBR test skipped */
 }
 
-const fixtures = path.join(os.tmpdir(), `manga-tui-local-test-${process.pid}`);
+const fixtures = path.join(os.tmpdir(), `komado-local-test-${process.pid}`);
 const png = (rgb) => sharp({ create: { width: 40, height: 60, channels: 3, background: rgb } }).png().toBuffer();
 const PAGES = ['1.png', '2.png', '10.png']; // 10 last → exercises natural sort
 
@@ -36,7 +36,7 @@ beforeAll(async () => {
 
   // standalone .cbr (only if rar is available)
   if (hasRar) {
-    const rarSrc = path.join(os.tmpdir(), `manga-tui-rar-src-${process.pid}`);
+    const rarSrc = path.join(os.tmpdir(), `komado-rar-src-${process.pid}`);
     fs.rmSync(rarSrc, { recursive: true, force: true });
     fs.mkdirSync(rarSrc, { recursive: true });
     for (const n of PAGES) fs.writeFileSync(path.join(rarSrc, n), await png({ r: 30, g: 40, b: 50 }));

@@ -2,17 +2,17 @@
 import process from 'node:process';
 
 function printHelp() {
-  console.log(`manga-tui — a terminal manga reader (MangaDex + local files)
+  console.log(`komado — a terminal manga reader (MangaDex + local files)
 
 Usage:
-  manga-tui                 launch the interactive reader
-  manga-tui doctor          print terminal/image capabilities and config
-  manga-tui render <img>    render one image (path or URL) at best fidelity
-  manga-tui --version       print version
-  manga-tui --help          show this help
+  komado                 launch the interactive reader
+  komado doctor          print terminal/image capabilities and config
+  komado render <img>    render one image (path or URL) at best fidelity
+  komado --version       print version
+  komado --help          show this help
 
 On a sixel/kitty terminal, opening a chapter launches a full-resolution pixel
-viewer:  n/p page · ↑/↓ pan · N/P chapter · f fit-width/whole-page · q back
+viewer:  ←/→ or a/d page · ↑/↓ pan · N/P chapter · f fit-width/whole-page · q back
 
 Otherwise the in-terminal cell reader is used:
   ↑/↓ or j/k   scroll        ←/→ or h/l   prev/next page
@@ -31,7 +31,7 @@ async function doctor() {
   const cfg = getConfig();
   const probe = await probeTerminal();
 
-  console.log('manga-tui doctor\n');
+  console.log('komado doctor\n');
   console.log('Terminal:');
   console.log(`  TERM=${caps.term}  TERM_PROGRAM=${caps.termProgram || '(none)'}`);
   console.log(`  truecolor:        ${caps.truecolor}`);
@@ -70,7 +70,7 @@ async function doctor() {
 
 async function renderCmd(target, rest) {
   if (!target) {
-    console.error('usage: manga-tui render <image-path-or-url> [width]');
+    console.error('usage: komado render <image-path-or-url> [width]');
     process.exit(1);
   }
   const width = Number(rest[0]) || process.stdout.columns || 80;
@@ -98,7 +98,7 @@ async function renderCmd(target, rest) {
 
     const { width: iw, height: ih } = await imageSize(buf);
     const rows = Math.max(1, Math.round(((ih / iw) * width) / 2));
-    const tmp = path.join(os.tmpdir(), `manga-tui-render-${Date.now()}.png`);
+    const tmp = path.join(os.tmpdir(), `komado-render-${Date.now()}.png`);
     await writeFile(tmp, await sharp(buf).png().toBuffer());
     spawnChafaToTerminal(tmp, { cols: width, rows });
     await unlink(tmp).catch(() => {});
@@ -115,11 +115,11 @@ async function runApp() {
   ensureDirs();
 
   if (!process.stdout.isTTY) {
-    console.error('manga-tui needs an interactive terminal (TTY). Run it directly in your terminal.');
+    console.error('komado needs an interactive terminal (TTY). Run it directly in your terminal.');
     process.exit(1);
   }
 
-  // Always record crashes (not gated on MANGA_TUI_DEBUG) so failures aren't lost
+  // Always record crashes (not gated on KOMADO_DEBUG) so failures aren't lost
   // when the alt-screen is torn down.
   const logCrash = (label, err) => {
     try {
@@ -128,10 +128,10 @@ async function runApp() {
   };
 
   // Probe the terminal for pixel-protocol support before Ink grabs stdin.
-  // MANGA_TUI_FORCE_PIXEL skips the probe (useful if detection is wrong, or for
+  // KOMADO_FORCE_PIXEL skips the probe (useful if detection is wrong, or for
   // exercising the viewer in a dumb terminal).
   const { detectCapabilities, probeTerminal } = await import('./render/detect.js');
-  const probed = process.env.MANGA_TUI_FORCE_PIXEL
+  const probed = process.env.KOMADO_FORCE_PIXEL
     ? { queried: true, sixel: true, kitty: false }
     : await probeTerminal();
   const caps = { ...detectCapabilities(), ...probed };

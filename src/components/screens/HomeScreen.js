@@ -34,7 +34,7 @@ export function HomeScreen() {
 
   return (
     <Box flexDirection="column">
-      <Header title="manga-tui" subtitle="a terminal manga reader · MangaDex + local files" />
+      <Header title="komado" subtitle="a terminal manga reader · MangaDex + local files" />
       <List
         items={items}
         height={items.length}

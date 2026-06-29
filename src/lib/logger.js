@@ -2,9 +2,9 @@ import fs from 'node:fs';
 import { paths } from '../config.js';
 
 // A TUI owns stdout — console.log would corrupt the Ink render. So debug output
-// goes to a file, only when MANGA_TUI_DEBUG is set. Tail it with:
-//   tail -f ~/.manga-tui/manga-tui.log
-const enabled = !!process.env.MANGA_TUI_DEBUG;
+// goes to a file, only when KOMADO_DEBUG is set. Tail it with:
+//   tail -f ~/.komado/komado.log
+const enabled = !!process.env.KOMADO_DEBUG;
 let stream = null;
 
 function out() {
