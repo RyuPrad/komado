@@ -1,6 +1,6 @@
 {
   "name": "komado",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "A terminal manga reader (MangaDex + local files) rendered with Ink.",
   "keywords": [
     "manga",
