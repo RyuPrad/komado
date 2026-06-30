@@ -97,7 +97,7 @@ Readable text needs real pixels. At startup the app probes your terminal (run
 - **sixel or kitty graphics supported** → opening a chapter launches a
   full-resolution **pixel viewer** (chafa straight to the terminal). It renders
   full-width with vertical pan by default; press `f` to toggle whole-page fit.
-  Keys: `←`/`→` or `a`/`d` page · `↑`/`↓` pan · `N`/`P` chapter · `f` fit · `q` back.
+  Keys: `←`/`→` or `a`/`d` page · `↑`/`↓` pan · `n`/`p` chapter · `f` fit · `q` back.
 - **neither** → the in-Ink **cell reader** is used (Unicode half-blocks, or
   chafa symbols when available). Fine for art, coarse for small lettering —
   that's the hard ceiling of character-cell rendering.

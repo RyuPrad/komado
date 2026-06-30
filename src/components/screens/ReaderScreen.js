@@ -179,12 +179,12 @@ export function ReaderScreen({ params }) {
       if (scroll >= maxScroll) nextPage();
       else setScroll((s) => Math.min(maxScroll, s + viewportRows - 1));
     } else if (key.pageUp) setScroll((s) => Math.max(0, s - (viewportRows - 1)));
-    else if (key.rightArrow || input === 'l' || input === 'n') nextPage();
-    else if (key.leftArrow || input === 'h' || input === 'p') prevPage();
+    else if (key.rightArrow || input === 'l') nextPage();
+    else if (key.leftArrow || input === 'h') prevPage();
     else if (input === 'g') setScroll(0);
     else if (input === 'G') setScroll(maxScroll);
-    else if (input === 'N') changeChapter(1);
-    else if (input === 'P') changeChapter(-1);
+    else if (input === 'n' || input === 'N') changeChapter(1);
+    else if (input === 'p' || input === 'P') changeChapter(-1);
     else if (input === 'f') setFitMode((f) => !f);
     else if (input === 'r') cycleRenderer();
   });
@@ -206,7 +206,7 @@ export function ReaderScreen({ params }) {
         ) : status === 'error' ? (
           <Box flexDirection="column">
             <ErrorView error={error} />
-            <Text dimColor>Press N / P to skip to another chapter, or Esc to go back.</Text>
+            <Text dimColor>Press n / p to skip to another chapter, or Esc to go back.</Text>
           </Box>
         ) : (
           slice.map((ln, i) => (
@@ -219,7 +219,7 @@ export function ReaderScreen({ params }) {
         hints={[
           ['←→', 'page'],
           ['↑↓', 'scroll'],
-          ['N/P', 'chapter'],
+          ['n/p', 'chapter'],
           ['f', fitMode ? 'scroll' : 'fit'],
           ['r', `render:${rendererPref}`],
           ['esc', 'back'],

@@ -106,7 +106,7 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
   function statusBar() {
     const { cols } = size();
     const left = `${manga.title} · ${chapterLabel(chapters[ci])} · ${pi + 1}/${pages ? pages.length : '?'}${fitWidth ? '' : ' · fit'}`;
-    const right = '←→ page · ↑↓ pan · N/P ch · f fit · q back';
+    const right = '←→ page · ↑↓ pan · n/p ch · f fit · q back';
     const gap = Math.max(1, cols - left.length - right.length - 2);
     return ` ${left}${' '.repeat(gap)}${right} `.slice(0, cols);
   }
@@ -205,7 +205,7 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
     } catch (err) {
       logger.warn('viewer draw failed', err);
       stdout.write(`${ESC}[2J${ESC}[H${ESC}[0m`);
-      stdout.write(`Error: ${err.message}\r\n\r\nN/P chapter · q back\r\n`);
+      stdout.write(`Error: ${err.message}\r\n\r\nn/p chapter · q back\r\n`);
     }
   }
 
@@ -303,12 +303,10 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
         const pageStep = Math.max(1, size().rows - 2);
 
         if (k === 'q' || k === ESC) { resolve(); return; }
-        if (k === 'n' || k === ' ') {
+        if (k === ' ') {
+          // space = read-through: scroll a full page, then advance at the bottom
           if (fitWidth && scroll < maxScroll) scroll = Math.min(maxScroll, scroll + pageStep);
           else nextPage();
-        } else if (k === 'p') {
-          if (fitWidth && scroll > 0) scroll = Math.max(0, scroll - pageStep);
-          else prevPage();
         } else if (k === 'd' || k === `${ESC}[C`) {
           nextPage();           // → / d : next page
         } else if (k === 'a' || k === `${ESC}[D`) {
@@ -317,10 +315,10 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
           scroll = Math.min(maxScroll, scroll + scrollStep);
         } else if (k === 'k' || k === `${ESC}[A`) {
           scroll = Math.max(0, scroll - scrollStep);
-        } else if (k === 'N') {
-          changeChapter(1);
-        } else if (k === 'P') {
-          changeChapter(-1);
+        } else if (k === 'n' || k === 'N') {
+          changeChapter(1);     // n / N : next chapter
+        } else if (k === 'p' || k === 'P') {
+          changeChapter(-1);    // p / P : previous chapter
         } else if (k === 'f') {
           fitWidth = !fitWidth;
           scroll = 0;
