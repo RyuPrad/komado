@@ -52,22 +52,21 @@ Then just type **`komado`**. Re-run that same command any time to update. It nee
 `git`, **Node ≥ 20**, and `npm`; it installs to `~/.local/share/komado` with the
 launcher in `~/.local/bin` (override via `KOMADO_APP_DIR` / `KOMADO_BIN_DIR`).
 
-**Windows** — install with npm from **PowerShell** or **CMD** (npm puts a native
-`komado` command on your `PATH`):
-
-```powershell
-npm i -g komado
-```
-
-…or the PowerShell one-liner:
+**Windows** — the PowerShell one-liner installs Node.js for you (via `winget`) if it's
+missing, then komado, leaving a native `komado` command on your `PATH`:
 
 ```powershell
 irm https://raw.githubusercontent.com/RyuPrad/komado/main/install.ps1 | iex
 ```
 
-Needs **Node ≥ 20** for Windows ([nodejs.org](https://nodejs.org)). Don't use the
-`curl … | bash` line on Windows — under **Git Bash** or **WSL** it installs a launcher
-that only runs inside that shell, never from CMD/PowerShell.
+Already have **Node ≥ 20**? Install straight from PowerShell or CMD instead:
+
+```powershell
+npm i -g komado
+```
+
+Don't use the `curl … | bash` line on Windows — under **Git Bash** or **WSL** it
+installs a launcher that only runs inside that shell, never from CMD/PowerShell.
 
 Uninstall from inside the app — **Settings → Uninstall komado…** (type `uninstall` to
 confirm) — removes the app, its launcher, and `~/.komado` (config, reading progress,
