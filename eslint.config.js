@@ -23,7 +23,7 @@ export default [
       'react/prop-types': 'off',
       'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
       // Setting loading/error state at the start of a data-fetching effect is the
-      // intended pattern here, not a derived-state smell — keep it advisory.
+      // intended pattern here, not a derived-state smell - keep it advisory.
       'react-hooks/set-state-in-effect': 'warn',
       'react-hooks/exhaustive-deps': 'warn',
     },

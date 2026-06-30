@@ -9,7 +9,7 @@ export async function imageSize(buffer) {
 }
 
 // Dispatch a buffer to the chosen inline backend, producing { lines, cols, rows }.
-// Always falls back to half-block so a chafa hiccup never blanks the reader —
+// Always falls back to half-block so a chafa hiccup never blanks the reader -
 // the same "graceful degradation" idea as your SSR→static fallback.
 export async function renderInline(buffer, { cols = 80, backend = 'halfblock' } = {}) {
   if (backend === 'chafa-symbols') {

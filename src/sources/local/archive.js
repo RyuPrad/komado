@@ -32,7 +32,7 @@ function readZipEntry(filePath, entryName) {
   return entry.getData();
 }
 
-// ---- RAR / CBR (node-unrar-js — WASM, loaded lazily on first use) ----
+// ---- RAR / CBR (node-unrar-js - WASM, loaded lazily on first use) ----
 let unrarPromise = null;
 const getUnrar = () => (unrarPromise ??= import('node-unrar-js'));
 

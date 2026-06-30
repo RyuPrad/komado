@@ -136,7 +136,7 @@ export function SettingsScreen() {
           {uninstallTargets().map((t) => (
             <Text key={t.path} color="red">
               {`  • ${displayPath(t.path)}`}
-              <Text dimColor>{`  — ${t.label}`}</Text>
+              <Text dimColor>{`  - ${t.label}`}</Text>
             </Text>
           ))}
           <Box marginTop={1}>

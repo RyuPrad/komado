@@ -39,7 +39,7 @@ export function MangaScreen({ params }) {
         if (isLoggedIn() && source.getReadMarkers) {
           source.getReadMarkers(initial.id, { signal: ctrl.signal })
             .then((ids) => { if (!cancelled) setReadSet(new Set(ids)); })
-            .catch(() => {}); // decorative — never block the screen on this
+            .catch(() => {}); // decorative - never block the screen on this
         }
       } catch (err) {
         if (!cancelled) setError(err);

@@ -7,7 +7,7 @@ import { logger } from '../../lib/logger.js';
 // MangaDex auth is OAuth2 "personal clients" (Keycloak). The user registers a
 // client at mangadex.org/settings, then we exchange client id/secret + their
 // username/password for a short-lived (15-min) access token and a rotating
-// refresh token. Reading manga needs none of this — login only unlocks the
+// refresh token. Reading manga needs none of this - login only unlocks the
 // user's follows/library and read-marker sync.
 
 // The access token lives in memory only; the refresh token is the durable
@@ -57,7 +57,7 @@ function applyTokens(creds, json) {
     token: json.access_token,
     expiresAt: Date.now() + (Number(json.expires_in) || 900) * 1000,
   };
-  // The refresh token rotates on each use — persist the latest one.
+  // The refresh token rotates on each use - persist the latest one.
   setCredentials({ ...creds, refreshToken: json.refresh_token || creds.refreshToken });
 }
 
@@ -101,10 +101,10 @@ export async function getAccessToken({ signal, force = false } = {}) {
       } catch (err) {
         // Only drop the saved session when the refresh token is DEFINITIVELY
         // dead (expired/revoked → invalid_grant). Transient or unexpected
-        // failures keep the credentials so the next call — or next launch — can
+        // failures keep the credentials so the next call - or next launch - can
         // recover, instead of silently logging the user out.
         if (err.oauthError === 'invalid_grant') {
-          logger.warn('MangaDex refresh token expired/revoked — logging out', err);
+          logger.warn('MangaDex refresh token expired/revoked - logging out', err);
           logout();
         }
         throw err;

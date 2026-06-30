@@ -6,7 +6,7 @@ import { disablePersistence } from './state/store.js';
 
 // Where install.sh put things. Mirrors the installer's own defaults + env
 // overrides (KOMADO_APP_DIR / KOMADO_BIN_DIR) so an in-app uninstall targets
-// exactly what was installed — and never a dev checkout, which lives elsewhere.
+// exactly what was installed - and never a dev checkout, which lives elsewhere.
 function appDir() {
   if (process.env.KOMADO_APP_DIR) return path.resolve(process.env.KOMADO_APP_DIR);
   const share = process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share');
@@ -16,13 +16,13 @@ function launcherFile() {
   const bin = process.env.KOMADO_BIN_DIR
     ? path.resolve(process.env.KOMADO_BIN_DIR)
     : path.join(os.homedir(), '.local', 'bin');
-  // The launcher FILE only — never the whole bin dir, which is shared with other tools.
+  // The launcher FILE only - never the whole bin dir, which is shared with other tools.
   return path.join(bin, 'komado');
 }
 
 // The three things a full install creates. `paths.home` is the runtime data dir
 // (~/.komado or KOMADO_HOME) and holds config, reading progress, the MangaDex
-// login, the page cache, and the log — all under one dir, so one delete clears it.
+// login, the page cache, and the log - all under one dir, so one delete clears it.
 export function uninstallTargets() {
   return [
     { label: 'application files', path: appDir() },
@@ -47,7 +47,7 @@ function assertSafe(p) {
   }
 }
 
-// Remove the installed app, its launcher, and all runtime data. Synchronous — a
+// Remove the installed app, its launcher, and all runtime data. Synchronous - a
 // one-shot teardown run right before exit. It first switches off the store's
 // persistence so a pending debounced save (or the flushProgress() that quit()
 // runs) can't recreate the data dir we're deleting. One failing target never

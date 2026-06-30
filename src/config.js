@@ -7,7 +7,7 @@ const usingDefaultHome = !process.env.KOMADO_HOME;
 const HOME = usingDefaultHome
   ? path.join(os.homedir(), '.komado')
   : path.resolve(process.env.KOMADO_HOME);
-// The pre-rename home (the project used to be "manga-tui") — migrated once on
+// The pre-rename home (the project used to be "manga-tui") - migrated once on
 // first run so existing config / reading progress / MangaDex login carry over.
 const LEGACY_HOME = path.join(os.homedir(), '.manga-tui');
 
@@ -34,7 +34,7 @@ export const DEFAULT_CONFIG = {
   localLibraryPaths: [],   // directories scanned by the local source
   language: 'en',          // preferred MangaDex translatedLanguage
   contentRating: ['safe', 'suggestive'],
-  dataSaver: true,         // smaller MangaDex page images — ideal for a terminal
+  dataSaver: true,         // smaller MangaDex page images - ideal for a terminal
   renderer: 'auto',        // auto | halfblock | chafa
   theme: 'default',
   syncProgress: true,      // push read-markers to MangaDex while logged in

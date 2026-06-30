@@ -14,7 +14,7 @@ try {
   execSync('command -v rar', { stdio: 'ignore' });
   hasRar = true;
 } catch {
-  /* rar not installed — CBR test skipped */
+  /* rar not installed - CBR test skipped */
 }
 
 const fixtures = path.join(os.tmpdir(), `komado-local-test-${process.pid}`);

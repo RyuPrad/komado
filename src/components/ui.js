@@ -3,7 +3,7 @@ import { Box, Text } from 'ink';
 
 const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
-// Hand-rolled spinner — dependency-light, matching your preference for not
+// Hand-rolled spinner - dependency-light, matching your preference for not
 // pulling a package for something this small.
 export function Spinner({ label = 'Loading' }) {
   const [frame, setFrame] = useState(0);

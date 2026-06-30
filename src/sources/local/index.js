@@ -27,7 +27,7 @@ const cleanName = (name) => name.replace(/\.(cbz|zip|cbr|rar)$/i, '');
 const expandHome = (p) => (p.startsWith('~') ? path.join(os.homedir(), p.slice(1)) : p);
 
 // A directory is a manga. Its chapters are: image subfolders, then archive
-// files; or — if neither — the loose images in the folder become one chapter.
+// files; or - if neither - the loose images in the folder become one chapter.
 function buildMangaFromDir(dirPath) {
   const entries = listDir(dirPath);
   const chapters = [];

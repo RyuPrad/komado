@@ -39,7 +39,7 @@ export function App({ caps = {}, onViewer, initialRoute = null }) {
     exit();
   }, [exit]);
 
-  // Global keys — suppressed while a text input is focused (`typing`).
+  // Global keys - suppressed while a text input is focused (`typing`).
   useInput((input, key) => {
     if (typing) return;
     if (input === 'q') quit();

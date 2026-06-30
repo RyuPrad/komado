@@ -28,7 +28,7 @@ with [Ink](https://github.com/vadimdemedes/ink).
 - **Reading progress.** Where you left off is saved per manga and resumable from
   *Continue reading*.
 - **Sign in to MangaDex (optional).** Log in to browse your **followed library**, see
-  which chapters you've already read, and **sync progress back** — finishing a chapter
+  which chapters you've already read, and **sync progress back** - finishing a chapter
   marks it read on MangaDex. Reading itself needs no account.
 - **Offline-friendly.** Point it at folders of `.cbz`/`.zip` or loose images.
 
@@ -41,7 +41,7 @@ with [Ink](https://github.com/vadimdemedes/ink).
 
 ## Install
 
-**macOS / Linux** — one line fetches the latest, builds it, and drops a `komado`
+**macOS / Linux** - one line fetches the latest, builds it, and drops a `komado`
 launcher on your PATH:
 
 ```bash
@@ -52,7 +52,7 @@ Then just type **`komado`**. Re-run that same command any time to update. It nee
 `git`, **Node ≥ 20**, and `npm`; it installs to `~/.local/share/komado` with the
 launcher in `~/.local/bin` (override via `KOMADO_APP_DIR` / `KOMADO_BIN_DIR`).
 
-**Windows** — one line installs Node.js for you (via `winget`) if it's missing,
+**Windows** - one line installs Node.js for you (via `winget`) if it's missing,
 then komado, leaving a native `komado` command on your `PATH`. Works from **both
 CMD and PowerShell**, and ignores the execution policy either way:
 
@@ -66,19 +66,19 @@ Prefer the native syntax? In **PowerShell**:
 irm https://raw.githubusercontent.com/RyuPrad/komado/main/install.ps1 | iex
 ```
 
-Already have **Node ≥ 20**? `npm i -g komado` works from either shell — CMD runs
+Already have **Node ≥ 20**? `npm i -g komado` works from either shell - CMD runs
 npm's `.cmd` shim directly, and PowerShell does too if your execution policy
 allows scripts.
 
-> Note: the short `irm … | iex` form is PowerShell-only — in **CMD** it prints
+> Note: the short `irm … | iex` form is PowerShell-only - in **CMD** it prints
 > `'irm' is not recognized`. Use the longer one-liner above (which works in both),
 > or run `npm i -g komado` directly.
 
-Don't use the `curl … | bash` line on Windows — under **Git Bash** or **WSL** it
+Don't use the `curl … | bash` line on Windows - under **Git Bash** or **WSL** it
 installs a launcher that only runs inside that shell, never from CMD/PowerShell.
 
-Uninstall from inside the app — **Settings → Uninstall komado…** (type `uninstall` to
-confirm) — removes the app, its launcher, and `~/.komado` (config, reading progress,
+Uninstall from inside the app - **Settings → Uninstall komado…** (type `uninstall` to
+confirm) - removes the app, its launcher, and `~/.komado` (config, reading progress,
 MangaDex login). By hand that's
 `rm -rf ~/.local/share/komado ~/.local/bin/komado ~/.komado`.
 
@@ -96,7 +96,7 @@ terminal supports and where state is stored:
 npm run doctor
 ```
 
-Render a single image (path or URL) at the best fidelity your terminal allows — handy
+Render a single image (path or URL) at the best fidelity your terminal allows - handy
 for testing sixel/kitty terminals:
 
 ```bash
@@ -127,7 +127,7 @@ Readable text needs real pixels. At startup the app probes your terminal (run
   full-width with vertical pan by default; press `f` to toggle whole-page fit.
   Keys: `←`/`→` or `a`/`d` page · `↑`/`↓` pan · `n`/`p` chapter · `f` fit · `q` back.
 - **neither** → the in-Ink **cell reader** is used (Unicode half-blocks, or
-  chafa symbols when available). Fine for art, coarse for small lettering —
+  chafa symbols when available). Fine for art, coarse for small lettering -
   that's the hard ceiling of character-cell rendering.
 
 Terminals with pixel support include kitty, WezTerm, Ghostty, foot, recent
@@ -137,9 +137,9 @@ Windows Terminal (≥ 1.22), and VS Code's terminal (with image support enabled)
 
 Reading from MangaDex needs **no account**. Signing in only adds personalization:
 
-- **My Library** — browse the manga you follow on MangaDex.
-- **Read-markers** — chapters you've already read are marked in the chapter list.
-- **Progress sync** — finishing a chapter pushes a read-marker back to MangaDex.
+- **My Library** - browse the manga you follow on MangaDex.
+- **Read-markers** - chapters you've already read are marked in the chapter list.
+- **Progress sync** - finishing a chapter pushes a read-marker back to MangaDex.
 
 MangaDex uses OAuth2 **personal clients**, so logging in is a one-time setup:
 
@@ -149,7 +149,7 @@ MangaDex uses OAuth2 **personal clients**, so logging in is a one-time setup:
 2. In the app: **Settings → Log in to MangaDex…**, then enter the client id/secret plus
    your MangaDex username and password.
 
-The session is **durable** — it requests an `offline_access` token and persists it, so
+The session is **durable** - it requests an `offline_access` token and persists it, so
 you stay logged in across restarts until you explicitly **log out** (Settings). Only the
 client id/secret + refresh token are stored, in `~/.komado/credentials.json` (mode
 `600`); your password is never written to disk. Toggle write-back any time with
@@ -175,10 +175,10 @@ archives are supported (RAR via the WASM `node-unrar-js`, no system binary neede
 
 Everything is self-contained under `~/.komado/` (override with `KOMADO_HOME`):
 
-- `config.json` — preferences + library paths
-- `progress.json` — reading progress
-- `credentials.json` — MangaDex login (client id/secret + refresh token; mode `600`)
-- `cache/` — scratch space for the renderer
+- `config.json` - preferences + library paths
+- `progress.json` - reading progress
+- `credentials.json` - MangaDex login (client id/secret + refresh token; mode `600`)
+- `cache/` - scratch space for the renderer
 
 ## Architecture
 
@@ -189,23 +189,23 @@ cli.js → app.js (screen stack) → screens → hooks/state → sources/* → H
                                      └──────────────→ render/* (image → terminal)
 ```
 
-- **`src/sources/*`** — each source (`mangadex`, `local`) implements the same interface
+- **`src/sources/*`** - each source (`mangadex`, `local`) implements the same interface
   (`search`, `getManga`, `listChapters`, `getPages`, `loadPageBuffer`) and returns the
   unified `{ data, pagination, meta }` envelope. The only source-specific seam is
   `loadPageBuffer`, which resolves raw bytes.
-- **`src/domain/shape.js`** — the unified `Manga`/`Chapter` contract.
-- **`src/render/*`** — capability detection + half-block (`sharp`) and `chafa` backends
+- **`src/domain/shape.js`** - the unified `Manga`/`Chapter` contract.
+- **`src/render/*`** - capability detection + half-block (`sharp`) and `chafa` backends
   behind one `renderInline()` dispatcher, with half-block as the always-works fallback.
-- **`src/lib/*`** — cross-cutting utilities ported from a server toolkit:
+- **`src/lib/*`** - cross-cutting utilities ported from a server toolkit:
   `fetchWithBackoff` (retries 429/5xx + timeout), `createCache` (TTL + negative caching
   + stampede protection), `AppError`/typed errors, the response `envelope`.
-- **`src/components/*` + `src/hooks/*`** — Ink UI. Effects use a cancelled-flag/abort
+- **`src/components/*` + `src/hooks/*`** - Ink UI. Effects use a cancelled-flag/abort
   guard against out-of-order responses, and reading progress writes are debounced.
 
 ## Development
 
 UI is plain JSX in `.js` files, transpiled to `dist/` by esbuild (a small
-`scripts/build.mjs` does a transpile-only, structure-preserving build — no bundling,
+`scripts/build.mjs` does a transpile-only, structure-preserving build - no bundling,
 so package imports stay external).
 
 ```bash

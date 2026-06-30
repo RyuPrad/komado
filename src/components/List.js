@@ -20,7 +20,7 @@ export function List({
   const selected = count ? Math.min(index, count - 1) : 0;
 
   // Notify the parent of the highlighted item when the selection (or list size)
-  // changes. Keyed on the index + count (primitives) — NOT the `items` array,
+  // changes. Keyed on the index + count (primitives) - NOT the `items` array,
   // whose reference changes every render in callers that rebuild it inline. If
   // `items` were a dep, a parent whose onHighlight calls setState would loop:
   // render → new items ref → effect → setState → render → … (max update depth).

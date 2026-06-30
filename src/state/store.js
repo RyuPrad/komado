@@ -13,7 +13,7 @@ function readJson(file, fallback) {
 
 // While the app is uninstalling itself, every writer no-ops so a pending debounced
 // save (or the flushProgress() that quit() runs) can't recreate the data directory
-// we just deleted. Set once, never unset — the process is on its way out.
+// we just deleted. Set once, never unset - the process is on its way out.
 let persistenceDisabled = false;
 export function disablePersistence() {
   persistenceDisabled = true;
@@ -49,7 +49,7 @@ function loadProgress() {
   return progress;
 }
 
-// Debounced save — the reader updates progress on every page turn, so coalesce.
+// Debounced save - the reader updates progress on every page turn, so coalesce.
 let saveTimer = null;
 function scheduleSave() {
   if (persistenceDisabled) return;

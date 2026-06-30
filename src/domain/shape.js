@@ -43,5 +43,5 @@ export function chapterLabel(ch) {
   const head = ch.number != null && ch.number !== ''
     ? `Ch. ${ch.number}${ch.volume != null && ch.volume !== '' ? ` (Vol. ${ch.volume})` : ''}`
     : 'Oneshot';
-  return ch.title ? `${head} — ${ch.title}` : head;
+  return ch.title ? `${head} - ${ch.title}` : head;
 }

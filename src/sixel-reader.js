@@ -7,7 +7,7 @@ import { logger } from './lib/logger.js';
 const ESC = '\x1b';
 
 // Synchronized-update markers (DEC private mode 2026). Wrapping a frame makes a
-// supporting terminal present it atomically — so the strip-scroll's "scroll the
+// supporting terminal present it atomically - so the strip-scroll's "scroll the
 // region, then repaint the freed strip" can't flash a blank strip at the leading
 // edge. Ignored (harmless) on terminals that don't implement it.
 const SYNC_BEGIN = Buffer.from(`${ESC}[?2026h`, 'latin1');
@@ -30,7 +30,7 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
 
   // Cell/band geometry for the optional strip-scroll. Sixel bands are 6px tall;
   // the terminal scrolls by whole cells. A "slot" = LCM(6, cellH)px is the
-  // smallest shift that's whole in BOTH grids — scrolling by slots lets us move
+  // smallest shift that's whole in BOTH grids - scrolling by slots lets us move
   // the on-screen pixels with the terminal and repaint only the newly-exposed
   // strip (seam-free), instead of re-sending the entire viewport every step.
   // Opt-in (KOMADO_SCROLL_DELTA=1) because it relies on the terminal scrolling
@@ -45,7 +45,7 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
   let shownSig = null; // page + geometry the on-screen frame was drawn for
 
   // Per-page caches. draw() runs on every keypress, but the page bytes and the
-  // full-width scale are constant within a page — re-doing them per scroll step
+  // full-width scale are constant within a page - re-doing them per scroll step
   // (a network round-trip per step for remote sources) is what made scrolling
   // crawl. Cache both, keyed by page (and width for the scale).
   let rawKey = null;
@@ -200,7 +200,7 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
       });
       // Last page reached → push a read-marker to MangaDex (self-guarded/deduped).
       // `pages &&`: a rapid n/p runs changeChapter() (pages = null) during one of
-      // this draw's awaits, after it started — guard before reading .length, or the
+      // this draw's awaits, after it started - guard before reading .length, or the
       // stale tail throws "Cannot read properties of null (reading 'length')".
       if (pages && pi === pages.length - 1 && source.syncChapterRead) {
         source.syncChapterRead(manga.id, chapters[ci].id);
@@ -212,7 +212,7 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
     }
   }
 
-  // Whole-viewport frame: home + overwrite (no full ESC[2J each step — that
+  // Whole-viewport frame: home + overwrite (no full ESC[2J each step - that
   // clear-to-blank is what made scrolling blink), erase only the rows a shorter
   // image leaves below, then the status bar. One atomic write avoids partial
   // frames and extra syscalls.
@@ -224,7 +224,7 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
   }
 
   // Strip-scroll frame (opt-in): scroll the image area with the terminal and
-  // repaint only the slot of sixel that scrolled into view — far less data than
+  // repaint only the slot of sixel that scrolled into view - far less data than
   // re-sending the whole viewport. Valid only for slot-sized shifts (whole cells
   // AND whole bands), so the moved pixels stay band-aligned and there's no seam.
   // Uses LF/RI inside a DECSTBM region (the most widely supported scroll path).
@@ -248,7 +248,7 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
   }
 
   // Coalescing scheduler: while a draw runs, extra requests collapse into a
-  // single follow-up at the latest state — input is never dropped and draws
+  // single follow-up at the latest state - input is never dropped and draws
   // never stack up behind a slow encode.
   function schedule({ fullClear = false } = {}) {
     if (fullClear) pendingFullClear = true;
@@ -290,7 +290,7 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
   const prevRaw = stdin.isRaw;
   let onKey;
   // Ink leaves stdin unref'd after unmount, so a bare `await`-for-keypress won't
-  // keep the process alive — it would exit the moment the first page is drawn.
+  // keep the process alive - it would exit the moment the first page is drawn.
   // A ref'd timer holds the event loop open until we're done.
   const keepAlive = setInterval(() => {}, 1 << 30);
   // Re-render on terminal resize so the page tracks the window size. Full clear:
@@ -333,13 +333,13 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
         } else {
           return; // ignore other keys without redrawing
         }
-        // Update state synchronously, then coalesce the redraw — rapid repeats
+        // Update state synchronously, then coalesce the redraw - rapid repeats
         // collapse into the fewest draws instead of being dropped mid-draw.
         inputSeq += 1;
         schedule();
       };
 
-      // Enter raw mode *after* the first draw — Ink's unmount restores cooked
+      // Enter raw mode *after* the first draw - Ink's unmount restores cooked
       // mode on a deferred tick, which would otherwise leave stdin line-buffered
       // (so single keypresses never arrive).
       stdin.removeAllListeners('data');

@@ -35,7 +35,7 @@ export function detectCapabilities() {
     chafa = true;
     chafaVersion = (out.match(/version\s+([\d.]+)/i) || [])[1] || 'unknown';
   } catch {
-    /* chafa not on PATH — half-block fallback */
+    /* chafa not on PATH - half-block fallback */
   }
 
   cached = { term, termProgram, kitty, sixel, truecolor, chafa, chafaVersion };

@@ -1,4 +1,4 @@
-// In-memory cache with TTL, negative caching, and stampede protection —
+// In-memory cache with TTL, negative caching, and stampede protection -
 // a port of your createCache. `wrap` shares a single in-flight promise per key
 // so concurrent callers (e.g. two screens requesting the same chapter) collapse
 // into one upstream request.

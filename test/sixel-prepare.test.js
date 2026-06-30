@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import sharp from 'sharp';
 import { scalePage, prepareImage } from '../src/render/sixel.js';
 
-// Synthetic pages (solid fill — only the geometry matters here).
+// Synthetic pages (solid fill - only the geometry matters here).
 const page = (width, height) =>
   sharp({ create: { width, height, channels: 3, background: { r: 20, g: 40, b: 60 } } })
     .png()
@@ -31,7 +31,7 @@ describe('scalePage', () => {
   });
 });
 
-describe('prepareImage — width mode (the scrolling path)', () => {
+describe('prepareImage - width mode (the scrolling path)', () => {
   it('windows a pre-scaled page to a full-height viewport rectangle', async () => {
     const scaled = await scalePage(await page(400, 2000), { cols: 80, cellW: 10 });
     const out = await prepareImage(null, { mode: 'width', scroll: 0, scaled, ...VIEW });
@@ -63,7 +63,7 @@ describe('prepareImage — width mode (the scrolling path)', () => {
   });
 });
 
-describe('prepareImage — fit mode', () => {
+describe('prepareImage - fit mode', () => {
   it('fits a landscape page inside the viewport and reports a short image', async () => {
     const out = await prepareImage(await page(800, 200), { mode: 'fit', ...VIEW });
     expect(out.maxScroll).toBe(0);

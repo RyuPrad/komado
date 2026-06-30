@@ -121,7 +121,7 @@ export async function loadPageBuffer(page, { signal } = {}) {
 
 // The signed-in user's followed manga, normalized like search results.
 export async function getFollows({ offset = 0, limit = MANGADEX.pageLimit, signal } = {}) {
-  // /user/follows/manga rejects contentRating[] (HTTP 400) — it returns ALL of
+  // /user/follows/manga rejects contentRating[] (HTTP 400) - it returns ALL of
   // the user's follows regardless of rating, which is what we want here anyway.
   const res = await mdGet('/user/follows/manga', {
     limit,

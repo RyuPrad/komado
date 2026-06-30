@@ -11,7 +11,7 @@ const DEFAULT_CELL_H = 20;
 
 // Encode an already-correctly-sized image to sixel at its NATIVE pixel
 // resolution. --exact-size + font-ratio 1/1 makes chafa emit ~1 image px → 1
-// sixel px, so the displayed size is exactly what we sized the image to — no
+// sixel px, so the displayed size is exactly what we sized the image to - no
 // dependence on chafa guessing the terminal's cell size through a pipe.
 export async function encodePixels(buffer, { format = 'sixel' } = {}) {
   const { stdout } = await withTempImage(buffer, (file) =>
@@ -40,7 +40,7 @@ export async function scalePage(buffer, { cols, cellW }) {
 //   mode 'width' → full terminal width, vertical window at cell offset `scroll`
 // Pass a pre-scaled page (`scaled` from scalePage) in 'width' mode to skip the
 // per-scroll resize; without it the page is scaled inline.
-// Returns { buffer, maxScroll, scroll, imageRows } — scroll clamped to range,
+// Returns { buffer, maxScroll, scroll, imageRows } - scroll clamped to range,
 // imageRows = the rendered image's height in cells (so the caller can erase any
 // rows below it instead of clearing the whole screen).
 export async function prepareImage(buffer, { mode, cols, rows, scroll = 0, cellW, cellH, scaled = null }) {
@@ -80,7 +80,7 @@ export async function prepareImage(buffer, { mode, cols, rows, scroll = 0, cellW
 // chafa + ~50ms of sharp per frame). But sixel is laid out as a fixed palette
 // defined UP FRONT followed by independent 6px-tall bands, each of which
 // re-selects its own colours. So we encode the whole page to sixel ONCE, then
-// window the pre-encoded bands per frame — a string slice, not a re-encode.
+// window the pre-encoded bands per frame - a string slice, not a re-encode.
 // (Verified against chafa 1.14: every palette entry precedes the first band and
 // every band starts with a colour select, so any band range stands alone.)
 const BAND_PX = 6;
@@ -109,7 +109,7 @@ export function parseSixelPage(raw) {
   // chafa omits a band's leading colour select when it equals the previous
   // band's last colour (the register carries across '-'). For a band to be the
   // TOP of a sliced window it must re-select that colour itself, so prepend the
-  // carried register wherever it's missing — making every band self-contained.
+  // carried register wherever it's missing - making every band self-contained.
   let carry = '0'; // sixel's default colour register
   const bands = rawBands.map((b) => {
     const fixed = b.startsWith('#') ? b : `#${carry}${b}`;

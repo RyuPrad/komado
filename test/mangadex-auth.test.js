@@ -102,6 +102,6 @@ describe('mangadex auth', () => {
 
     await login(creds);
     await expect(getAccessToken()).rejects.toThrow();
-    expect(isLoggedIn()).toBe(true); // NOT logged out — transient failure
+    expect(isLoggedIn()).toBe(true); // NOT logged out - transient failure
   });
 });

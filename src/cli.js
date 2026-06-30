@@ -2,7 +2,7 @@
 import process from 'node:process';
 
 function printHelp() {
-  console.log(`komado — a terminal manga reader (MangaDex + local files)
+  console.log(`komado - a terminal manga reader (MangaDex + local files)
 
 Usage:
   komado                 launch the interactive reader
@@ -42,8 +42,8 @@ async function doctor() {
       console.log(`  cell size:        ${probe.cellW ?? '?'}x${probe.cellH ?? '?'} px`);
     }
   } else {
-    console.log(`  kitty graphics:   ${caps.kitty}  (env guess — run in a real terminal to probe)`);
-    console.log(`  sixel:            ${caps.sixel}  (env guess — run in a real terminal to probe)`);
+    console.log(`  kitty graphics:   ${caps.kitty}  (env guess - run in a real terminal to probe)`);
+    console.log(`  sixel:            ${caps.sixel}  (env guess - run in a real terminal to probe)`);
   }
   console.log(`  chafa:            ${caps.chafa ? caps.chafaVersion : 'not installed'}`);
   console.log(`  inline backend:   ${caps.chafa ? 'chafa-symbols' : 'half-block'}  (config.renderer=${cfg.renderer})`);
@@ -52,7 +52,7 @@ async function doctor() {
     console.log(
       protos.length
         ? `\n  → Pixel graphics available (${protos.join(', ')}). Crisp rendering is possible:\n    test it with  node dist/cli.js render <some-image>`
-        : '\n  → No pixel protocol detected — rendering is limited to character cells.',
+        : '\n  → No pixel protocol detected - rendering is limited to character cells.',
     );
   }
   console.log('\nPaths:');
@@ -65,7 +65,7 @@ async function doctor() {
   console.log(`  dataSaver:         ${cfg.dataSaver}`);
   console.log(`  renderer:          ${cfg.renderer}`);
   console.log(`  contentRating:     ${cfg.contentRating.join(', ')}`);
-  console.log(`  localLibraryPaths: ${cfg.localLibraryPaths.length ? cfg.localLibraryPaths.join(', ') : '(none — add in Settings)'}`);
+  console.log(`  localLibraryPaths: ${cfg.localLibraryPaths.length ? cfg.localLibraryPaths.join(', ') : '(none - add in Settings)'}`);
 }
 
 async function renderCmd(target, rest) {

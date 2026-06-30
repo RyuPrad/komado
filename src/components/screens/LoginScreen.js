@@ -22,7 +22,7 @@ export function LoginScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
-  // The whole screen is a form — keep global keys (q / Esc) suppressed.
+  // The whole screen is a form - keep global keys (q / Esc) suppressed.
   useEffect(() => {
     ui.setTyping(true);
     return () => ui.setTyping(false);

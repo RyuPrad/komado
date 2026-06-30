@@ -36,7 +36,7 @@ describe('SettingsScreen', () => {
       </UIContext.Provider>,
     );
     await sleep(80);
-    stdin.write('G');   // jump to the last row — "Uninstall komado…"
+    stdin.write('G');   // jump to the last row - "Uninstall komado…"
     await sleep(30);
     stdin.write('\r');  // select it → confirmation (does NOT delete anything)
     await sleep(80);

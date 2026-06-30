@@ -48,7 +48,7 @@ export async function fetchWithBackoff(url, options = {}) {
       }
       return res;
     } catch (err) {
-      // Caller cancelled — propagate without retrying.
+      // Caller cancelled - propagate without retrying.
       if (extSignal?.aborted) throw err;
       if (attempt < retries) {
         const delay = Math.min(maxDelayMs, baseDelayMs * 2 ** attempt) + Math.random() * 200;

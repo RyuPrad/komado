@@ -9,7 +9,7 @@ import { truncate } from '../../lib/text.js';
 const PAGE = 32;
 
 // The signed-in user's MangaDex follows. Same browse/paginate shape as the
-// search screen, minus the query box — getFollows is just another envelope.
+// search screen, minus the query box - getFollows is just another envelope.
 export function LibraryScreen({ params }) {
   const sourceId = params?.sourceId || 'mangadex';
   const ui = useUI();

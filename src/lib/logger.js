@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import { paths } from '../config.js';
 
-// A TUI owns stdout — console.log would corrupt the Ink render. So debug output
+// A TUI owns stdout - console.log would corrupt the Ink render. So debug output
 // goes to a file, only when KOMADO_DEBUG is set. Tail it with:
 //   tail -f ~/.komado/komado.log
 const enabled = !!process.env.KOMADO_DEBUG;

@@ -1,4 +1,4 @@
-// Typed, operational errors — same idea as your server AppError, minus HTTP plumbing.
+// Typed, operational errors - same idea as your server AppError, minus HTTP plumbing.
 // statusCode is kept for parity/log triage; the TUI maps these to friendly messages.
 export class AppError extends Error {
   constructor(message, statusCode = 500, opts = {}) {

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# komado installer — fetches the app, builds it, and drops a `komado` launcher on
+# komado installer - fetches the app, builds it, and drops a `komado` launcher on
 # your PATH. Safe to re-run any time to update to the latest version.
 #
 #   curl -fsSL https://raw.githubusercontent.com/RyuPrad/komado/main/install.sh | bash
@@ -18,7 +18,7 @@ die()  { printf '\033[1;31m✗\033[0m %s\n' "$1" >&2; exit 1; }
 # --- preconditions --------------------------------------------------------
 command -v git  >/dev/null 2>&1 || die "git is required."
 command -v npm  >/dev/null 2>&1 || die "npm is required."
-command -v node >/dev/null 2>&1 || die "Node.js >= 20 is required — see https://nodejs.org"
+command -v node >/dev/null 2>&1 || die "Node.js >= 20 is required - see https://nodejs.org"
 node_major=$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)
 [ "$node_major" -ge 20 ] || die "Node.js >= 20 required (found $(node -v))."
 
@@ -29,14 +29,14 @@ if ! command -v chafa >/dev/null 2>&1; then
   elif command -v dnf    >/dev/null 2>&1; then hint="sudo dnf install chafa"
   elif command -v pacman >/dev/null 2>&1; then hint="sudo pacman -S chafa"
   fi
-  warn "chafa not found — $hint  (without it, komado falls back to character-cell rendering)"
+  warn "chafa not found - $hint  (without it, komado falls back to character-cell rendering)"
 fi
 
 # --- fetch / update -------------------------------------------------------
 if [ -d "$APP_DIR/.git" ]; then
   say "Updating komado in $APP_DIR"
   git -C "$APP_DIR" pull --ff-only --depth 1 \
-    || { warn "update failed — re-cloning"; rm -rf "$APP_DIR"; git clone --depth 1 "$REPO" "$APP_DIR"; }
+    || { warn "update failed - re-cloning"; rm -rf "$APP_DIR"; git clone --depth 1 "$REPO" "$APP_DIR"; }
 else
   say "Downloading komado → $APP_DIR"
   rm -rf "$APP_DIR"; mkdir -p "$(dirname "$APP_DIR")"

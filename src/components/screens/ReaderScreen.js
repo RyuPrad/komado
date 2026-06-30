@@ -75,7 +75,7 @@ export function ReaderScreen({ params }) {
     return out;
   };
 
-  // Background prefetch (own controller — survives page turns, aborts on unmount).
+  // Background prefetch (own controller - survives page turns, aborts on unmount).
   const prefetchers = useRef(new Set());
   useEffect(() => () => {
     for (const c of prefetchers.current) c.abort();
