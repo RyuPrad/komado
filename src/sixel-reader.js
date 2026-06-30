@@ -199,7 +199,10 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
         page: pi,
       });
       // Last page reached → push a read-marker to MangaDex (self-guarded/deduped).
-      if (pi === pages.length - 1 && source.syncChapterRead) {
+      // `pages &&`: a rapid n/p runs changeChapter() (pages = null) during one of
+      // this draw's awaits, after it started — guard before reading .length, or the
+      // stale tail throws "Cannot read properties of null (reading 'length')".
+      if (pages && pi === pages.length - 1 && source.syncChapterRead) {
         source.syncChapterRead(manga.id, chapters[ci].id);
       }
     } catch (err) {
