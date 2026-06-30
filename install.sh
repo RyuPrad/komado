@@ -66,3 +66,21 @@ case ":$PATH:" in
 esac
 
 printf '\n\033[1;32m✓ komado installed.\033[0m  Launch it by typing:  \033[1mkomado\033[0m\n'
+
+# --- Windows note ---------------------------------------------------------
+# curl|bash on Windows runs under Git Bash/MSYS/Cygwin or WSL, so the launcher we
+# just wrote is a *bash* script on the Unix PATH: usable inside this shell, but
+# invisible to CMD/PowerShell (hence "'komado' is not recognized"). Steer those
+# users to npm, which installs a native komado.cmd onto the Windows PATH.
+on_windows=""
+case "$(uname -s 2>/dev/null)" in
+  MINGW*|MSYS*|CYGWIN*) on_windows="$(uname -s)" ;;
+  *) if grep -qiE 'microsoft|wsl' /proc/version 2>/dev/null; then on_windows="WSL"; fi ;;
+esac
+if [ -n "$on_windows" ]; then
+  printf '\n\033[1;33m! Windows detected (%s).\033[0m The command above works inside this shell, but NOT from CMD or PowerShell.\n' "$on_windows" >&2
+  printf '  For a command you can run from CMD/PowerShell, install with npm there instead:\n' >&2
+  printf '      \033[1mnpm i -g komado\033[0m\n' >&2
+  printf '  ...or the PowerShell one-liner:\n' >&2
+  printf '      \033[1mirm https://raw.githubusercontent.com/RyuPrad/komado/main/install.ps1 | iex\033[0m\n' >&2
+fi

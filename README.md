@@ -41,7 +41,8 @@ with [Ink](https://github.com/vadimdemedes/ink).
 
 ## Install
 
-One line — fetches the latest, builds it, and drops a `komado` launcher on your PATH:
+**macOS / Linux** — one line fetches the latest, builds it, and drops a `komado`
+launcher on your PATH:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/RyuPrad/komado/main/install.sh | bash
@@ -51,8 +52,27 @@ Then just type **`komado`**. Re-run that same command any time to update. It nee
 `git`, **Node ≥ 20**, and `npm`; it installs to `~/.local/share/komado` with the
 launcher in `~/.local/bin` (override via `KOMADO_APP_DIR` / `KOMADO_BIN_DIR`).
 
-Uninstall: `rm -rf ~/.local/share/komado ~/.local/bin/komado` (add `~/.komado` to also
-drop your saved progress and login).
+**Windows** — install with npm from **PowerShell** or **CMD** (npm puts a native
+`komado` command on your `PATH`):
+
+```powershell
+npm i -g komado
+```
+
+…or the PowerShell one-liner:
+
+```powershell
+irm https://raw.githubusercontent.com/RyuPrad/komado/main/install.ps1 | iex
+```
+
+Needs **Node ≥ 20** for Windows ([nodejs.org](https://nodejs.org)). Don't use the
+`curl … | bash` line on Windows — under **Git Bash** or **WSL** it installs a launcher
+that only runs inside that shell, never from CMD/PowerShell.
+
+Uninstall from inside the app — **Settings → Uninstall komado…** (type `uninstall` to
+confirm) — removes the app, its launcher, and `~/.komado` (config, reading progress,
+MangaDex login). By hand that's
+`rm -rf ~/.local/share/komado ~/.local/bin/komado ~/.komado`.
 
 ### From source (for development)
 
