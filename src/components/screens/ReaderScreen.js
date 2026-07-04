@@ -28,19 +28,26 @@ export function ReaderScreen({ params }) {
   const chapter = chapters[chapterIndex];
   const viewportRows = Math.max(3, rows - 3); // status line + help line + margin
   const renderCache = useRef(new Map());
+  // Which chapter the loaded `pages` belong to. On a chapter change there's a
+  // one-commit window where `chapter` is already the new one but `pages` (and
+  // `status`) are still the old chapter's - anything pairing chapter.id with
+  // pages must check this or it acts on a mismatched pair (see progress effect).
+  const pagesFor = useRef(null);
   const backend = useMemo(() => pickInlineBackend({ renderer: rendererPref }), [rendererPref]);
 
   // --- Load page descriptors when the chapter changes ---
   useEffect(() => {
     let cancelled = false;
     const ctrl = new AbortController();
+    const chapterId = chapter.id;
     setStatus('loading');
     setPages(null);
     setError(null);
     (async () => {
       try {
-        const pgs = await source.getPages(chapter.id, { signal: ctrl.signal });
+        const pgs = await source.getPages(chapterId, { signal: ctrl.signal });
         if (cancelled) return;
+        pagesFor.current = chapterId;
         setPages(pgs);
         setPageIndex((p) => Math.max(0, Math.min(p, pgs.length - 1)));
       } catch (err) {
@@ -71,7 +78,11 @@ export function ReaderScreen({ params }) {
       renderCols = Math.max(8, Math.min(cols, Math.floor(viewportRows * 2 * (width / height))));
     }
     const out = await renderInline(buf, { cols: renderCols, backend });
-    renderCache.current.set(key, out);
+    const cache = renderCache.current;
+    cache.set(key, out);
+    // Rendered pages are big (one ANSI string per row) - keep a rolling window,
+    // not the whole chapter, or a long session grows by megabytes per page.
+    while (cache.size > 16) cache.delete(cache.keys().next().value);
     return out;
   };
 
@@ -124,7 +135,11 @@ export function ReaderScreen({ params }) {
 
   // --- Persist reading progress on every settled page ---
   useEffect(() => {
-    if (status !== 'ready' || !pages) return;
+    // The pagesFor check closes the chapter-change window where `pages`/`status`
+    // still belong to the PREVIOUS chapter: without it, leaving a 1-page chapter
+    // (pageIndex 0 === stale pages.length - 1) instantly marked the NEW chapter
+    // read on MangaDex before it even loaded.
+    if (status !== 'ready' || !pages || pagesFor.current !== chapter.id) return;
     setProgress(manga.key, {
       source: sourceId,
       mangaId: manga.id,
@@ -152,7 +167,8 @@ export function ReaderScreen({ params }) {
     setScroll(0);
   };
   const nextPage = () => {
-    if (pages && pageIndex < pages.length - 1) {
+    if (!pages) return; // chapter still loading - a blind advance would skip it
+    if (pageIndex < pages.length - 1) {
       setPageIndex(pageIndex + 1);
       setScroll(0);
     } else {
@@ -160,6 +176,7 @@ export function ReaderScreen({ params }) {
     }
   };
   const prevPage = () => {
+    if (!pages) return;
     if (pageIndex > 0) {
       setPageIndex(pageIndex - 1);
       setScroll(0);

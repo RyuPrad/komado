@@ -30,9 +30,11 @@ export async function encodePixels(buffer, { format = 'sixel' } = {}) {
 // Returns { buffer, width, height } with the real scaled pixel dimensions.
 export async function scalePage(buffer, { cols, cellW }) {
   const viewW = Math.max(1, Math.round(cols * (cellW || DEFAULT_CELL_W)));
-  const scaled = await sharp(buffer).resize({ width: viewW }).png().toBuffer();
-  const meta = await sharp(scaled).metadata();
-  return { buffer: scaled, width: meta.width || viewW, height: meta.height || 0 };
+  const { data, info } = await sharp(buffer)
+    .resize({ width: viewW })
+    .png()
+    .toBuffer({ resolveWithObject: true }); // dims come with the encode - no second decode
+  return { buffer: data, width: info.width || viewW, height: info.height || 0 };
 }
 
 // Resize/crop a page to the exact viewport pixel rectangle.
@@ -49,12 +51,11 @@ export async function prepareImage(buffer, { mode, cols, rows, scroll = 0, cellW
   const viewH = Math.max(1, Math.round(rows * ch));
 
   if (mode === 'fit') {
-    const out = await sharp(buffer)
+    const { data, info } = await sharp(buffer)
       .resize({ width: viewW, height: viewH, fit: 'inside', withoutEnlargement: false })
       .png()
-      .toBuffer();
-    const meta = await sharp(out).metadata();
-    return { buffer: out, maxScroll: 0, scroll: 0, imageRows: Math.round((meta.height || viewH) / ch) };
+      .toBuffer({ resolveWithObject: true });
+    return { buffer: data, maxScroll: 0, scroll: 0, imageRows: Math.round((info.height || viewH) / ch) };
   }
 
   // mode 'width': scale to full width (reuse `scaled` when scrolling), then

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { useUI } from '../../ui-context.js';
-import { getSource } from '../../sources/index.js';
+import { getSource, listAllChapters } from '../../sources/index.js';
 import { getProgress } from '../../state/store.js';
 import { isLoggedIn } from '../../sources/mangadex/auth.js';
 import { chapterLabel } from '../../domain/shape.js';
@@ -28,13 +28,13 @@ export function MangaScreen({ params }) {
     setError(null);
     (async () => {
       try {
-        const [full, chRes] = await Promise.all([
+        const [full, chs] = await Promise.all([
           source.getManga(initial.id, { signal: ctrl.signal }).catch(() => initial),
-          source.listChapters(initial.id, { signal: ctrl.signal, limit: 500 }),
+          listAllChapters(source, initial.id, { signal: ctrl.signal }),
         ]);
         if (cancelled) return;
         setManga(full);
-        setChapters(chRes.data);
+        setChapters(chs);
         // Decorate the list with MangaDex read-markers (logged-in only).
         if (isLoggedIn() && source.getReadMarkers) {
           source.getReadMarkers(initial.id, { signal: ctrl.signal })

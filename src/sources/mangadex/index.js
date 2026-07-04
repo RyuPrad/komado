@@ -81,11 +81,14 @@ export async function listChapters(mangaId, { offset = 0, limit = 96, language, 
 }
 
 // Page descriptors with a directly fetchable URL. The at-home token in baseUrl
-// expires fast, so this is only briefly cached.
-export async function getPages(chapterId, { signal } = {}) {
+// expires fast, so this is only briefly cached. `fresh` drops the cached server
+// handout first - used to rebuild URLs after the token dies mid-chapter.
+export async function getPages(chapterId, { signal, fresh = false } = {}) {
   const cfg = getConfig();
+  const key = `pages:${chapterId}:${cfg.dataSaver ? 'ds' : 'hq'}`;
+  if (fresh) cache.delete(key);
   const server = await cache.wrap(
-    `pages:${chapterId}:${cfg.dataSaver ? 'ds' : 'hq'}`,
+    key,
     () => mdGet(`/at-home/server/${chapterId}`, null, { signal }),
     60_000,
   );
@@ -103,16 +106,27 @@ export async function getPages(chapterId, { signal } = {}) {
   }
   return files.map((file, index) => ({
     index,
+    chapterId,
     url: `${server.baseUrl}/${mode}/${server.chapter.hash}/${file}`,
   }));
 }
 
 export async function loadPageBuffer(page, { signal } = {}) {
-  const res = await fetchWithBackoff(page.url, {
+  const fetchPage = (url) => fetchWithBackoff(url, {
     headers: { 'User-Agent': MANGADEX.userAgent },
     timeoutMs: 30_000,
     signal,
   });
+  let res = await fetchPage(page.url);
+  // The at-home baseUrl embeds a short-lived token: a chapter kept open longer
+  // than its lifetime (a slow read) starts 4xx-ing on later pages. Rebuild the
+  // URL from a fresh server handout and retry once before giving up.
+  if (!res.ok && page.chapterId) {
+    try { await res.body?.cancel(); } catch { /* ignore */ }
+    const rebuilt = await getPages(page.chapterId, { signal, fresh: true }).catch(() => null);
+    const retry = rebuilt?.[page.index];
+    if (retry) res = await fetchPage(retry.url);
+  }
   if (!res.ok) throw new NotFoundError(`Failed to load page ${page.index} (${res.status})`);
   return Buffer.from(await res.arrayBuffer());
 }

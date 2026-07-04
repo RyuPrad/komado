@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Box, Text } from 'ink';
 import { useUI } from '../../ui-context.js';
-import { getSource } from '../../sources/index.js';
+import { getSource, listAllChapters } from '../../sources/index.js';
 import { getAllProgress } from '../../state/store.js';
 import { makeManga } from '../../domain/shape.js';
 import { List } from '../List.js';
@@ -19,17 +19,17 @@ export function ContinueScreen() {
     setLoading(true);
     setError(null);
     try {
-      const [manga, chRes] = await Promise.all([
+      const [manga, chapters] = await Promise.all([
         source
           .getManga(entry.mangaId)
           .catch(() => makeManga({ source: entry.source, id: entry.mangaId, title: entry.mangaTitle })),
-        source.listChapters(entry.mangaId, { limit: 500 }),
+        listAllChapters(source, entry.mangaId),
       ]);
-      const idx = chRes.data.findIndex((c) => c.id === entry.chapterId);
+      const idx = chapters.findIndex((c) => c.id === entry.chapterId);
       ui.openReader({
         sourceId: entry.source,
         manga,
-        chapters: chRes.data,
+        chapters,
         chapterIndex: Math.max(0, idx),
         startPage: entry.page || 0,
       });

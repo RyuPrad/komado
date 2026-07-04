@@ -5,13 +5,12 @@ import { useUI } from '../../ui-context.js';
 import { getConfig, setConfig } from '../../state/store.js';
 import { scan } from '../../sources/local/index.js';
 import { isLoggedIn, logout } from '../../sources/mangadex/auth.js';
-import { detectCapabilities } from '../../render/detect.js';
+import { detectCapabilities, RENDERER_CYCLE } from '../../render/detect.js';
 import { List } from '../List.js';
 import { Header, KeyHints } from '../ui.js';
 import { truncate } from '../../lib/text.js';
 import { performUninstall, uninstallTargets, displayPath, formatUninstallSummary } from '../../uninstall.js';
 
-const RENDERERS = ['auto', 'halfblock', 'chafa'];
 const RATING_PRESETS = [
   ['safe'],
   ['safe', 'suggestive'],
@@ -63,7 +62,7 @@ export function SettingsScreen() {
         if (item.id === 'syncProgress') return save({ syncProgress: !cfg.syncProgress });
         return save({ dataSaver: !cfg.dataSaver });
       case 'cycle':
-        if (item.id === 'renderer') return save({ renderer: cycle(RENDERERS, cfg.renderer) });
+        if (item.id === 'renderer') return save({ renderer: cycle(RENDERER_CYCLE, cfg.renderer) });
         if (item.id === 'rating') {
           const idx = RATING_PRESETS.findIndex((p) => ratingLabel(p) === ratingLabel(cfg.contentRating));
           return save({ contentRating: RATING_PRESETS[(idx + 1) % RATING_PRESETS.length] });

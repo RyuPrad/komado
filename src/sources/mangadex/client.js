@@ -50,6 +50,7 @@ export async function mdGet(path, params, { signal, auth = false } = {}) {
     // Token revoked server-side mid-session: force a refresh and retry once.
     if (auth && err.statusCode === 401 && isLoggedIn()) {
       const token = await getAccessToken({ signal, force: true });
+      if (!token) throw err; // session died during the forced refresh
       return fetchJson(url, { headers: { ...h, Authorization: `Bearer ${token}` }, signal });
     }
     throw err;
@@ -76,6 +77,7 @@ export async function mdSend(method, path, body, { signal, auth = true } = {}) {
   } catch (err) {
     if (auth && err.statusCode === 401 && isLoggedIn()) {
       const token = await getAccessToken({ signal, force: true });
+      if (!token) throw err; // session died during the forced refresh
       return send({ ...base, Authorization: `Bearer ${token}` });
     }
     throw err;

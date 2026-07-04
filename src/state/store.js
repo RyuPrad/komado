@@ -51,8 +51,17 @@ function loadProgress() {
 
 // Debounced save - the reader updates progress on every page turn, so coalesce.
 let saveTimer = null;
+let exitFlushArmed = false;
 function scheduleSave() {
   if (persistenceDisabled) return;
+  if (!exitFlushArmed) {
+    exitFlushArmed = true;
+    // The debounce timer is unref'd, so an exit path that skips quit() (Ink's
+    // exitOnCtrlC, a crash teardown) would drop the last ~400ms of page turns -
+    // i.e. exactly the page the user stopped on. Flush synchronously on exit;
+    // writeJsonAtomic itself no-ops if persistence was disabled (uninstall).
+    process.once('exit', flushProgress);
+  }
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => writeJsonAtomic(paths.progressFile, progress), 400);
   saveTimer.unref?.();

@@ -43,6 +43,8 @@ export async function fetchWithBackoff(url, options = {}) {
           ? retryAfter * 1000
           : Math.min(maxDelayMs, baseDelayMs * 2 ** attempt) + Math.random() * 200;
         attempt += 1;
+        // Release the abandoned response's connection instead of leaving it to GC.
+        try { await res.body?.cancel(); } catch { /* already consumed - ignore */ }
         await sleep(delay, extSignal);
         continue;
       }

@@ -2,6 +2,7 @@ import { getSource } from './sources/index.js';
 import { setProgress } from './state/store.js';
 import { chapterLabel } from './domain/shape.js';
 import { encodePixels, prepareImage, scalePage, encodeSixelPage, sliceSixelPage } from './render/sixel.js';
+import { tokenizeKeys } from './lib/keys.js';
 import { logger } from './lib/logger.js';
 
 const ESC = '\x1b';
@@ -47,13 +48,22 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
   // Per-page caches. draw() runs on every keypress, but the page bytes and the
   // full-width scale are constant within a page - re-doing them per scroll step
   // (a network round-trip per step for remote sources) is what made scrolling
-  // crawl. Cache both, keyed by page (and width for the scale).
-  let rawKey = null;
-  let rawBuf = null;
-  let scaledKey = null;
-  let scaledBuf = null;
-  let sixelKey = null;
-  let sixelPg = null;
+  // crawl. Small promise-keyed LRUs (not single slots) so flipping back a page
+  // is instant and the next page can be prefetched; storing PROMISES means a
+  // page turn that lands mid-prefetch joins the in-flight work instead of
+  // duplicating it. A rejected entry evicts itself so a retry can succeed.
+  const rawCache = new Map();    // `${ci}:${pi}`                -> Promise<Buffer>
+  const scaledCache = new Map(); // `${ci}:${pi}:${cols}:${cw}`  -> Promise<{buffer,width,height}>
+  const sixelCache = new Map();  // `${ci}:${pi}:${cols}:${cw}`  -> Promise<parsed sixel page>
+  function memo(map, key, max, make) {
+    let p = map.get(key);
+    if (p) { map.delete(key); map.set(key, p); return p; } // refresh recency
+    p = make();
+    map.set(key, p);
+    p.catch(() => { if (map.get(key) === p) map.delete(key); });
+    while (map.size > max) map.delete(map.keys().next().value);
+    return p;
+  }
 
   // Render scheduler state: coalesce bursts of keypresses into the fewest draws
   // instead of dropping input mid-draw. `inputSeq` lets a finishing draw detect
@@ -75,32 +85,31 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
   }
 
   // The page bytes, fetched once per page (not per scroll step).
-  async function pageBuffer() {
-    const key = `${ci}:${pi}`;
-    if (rawKey === key && rawBuf) return rawBuf;
-    rawBuf = await source.loadPageBuffer(pages[pi]);
-    rawKey = key;
-    return rawBuf;
-  }
+  const pageBuffer = (p = pi) =>
+    memo(rawCache, `${ci}:${p}`, 6, () => source.loadPageBuffer(pages[p]));
 
   // The page scaled to full viewport width, reused across vertical scrolling.
-  async function scaledPage(cols) {
-    const key = `${ci}:${pi}:${cols}:${caps.cellW || ''}`;
-    if (scaledKey === key && scaledBuf) return scaledBuf;
-    scaledBuf = await scalePage(await pageBuffer(), { cols, cellW: caps.cellW });
-    scaledKey = key;
-    return scaledBuf;
-  }
+  const scaledPage = (cols, p = pi) =>
+    memo(scaledCache, `${ci}:${p}:${cols}:${caps.cellW || ''}`, 3,
+      async () => scalePage(await pageBuffer(p), { cols, cellW: caps.cellW }));
 
   // The page encoded to a sliceable sixel ONCE (palette + 6px bands), so every
   // scroll step is a band-window slice instead of a fresh chafa+sharp encode.
-  async function sixelPageCached(cols) {
-    const key = `${ci}:${pi}:${cols}:${caps.cellW || ''}`;
-    if (sixelKey === key && sixelPg) return sixelPg;
-    const scaled = await scaledPage(cols);
-    sixelPg = await encodeSixelPage(scaled.buffer);
-    sixelKey = key;
-    return sixelPg;
+  const sixelPageCached = (cols, p = pi) =>
+    memo(sixelCache, `${ci}:${p}:${cols}:${caps.cellW || ''}`, 3,
+      async () => encodeSixelPage((await scaledPage(cols, p)).buffer));
+
+  // Warm the caches for the page the user is most likely to hit next. Runs
+  // only AFTER a draw burst settles (never on the scroll hot path); the heavy
+  // work happens in subprocesses/thread pools (chafa/sharp) or on the network,
+  // so the input loop stays responsive. Failures are ignored - the page just
+  // loads on demand as before.
+  function prefetchNext() {
+    if (!pages || pi + 1 >= pages.length) return;
+    const p = pi + 1;
+    const { cols } = size();
+    const job = fitWidth && format === 'sixel' ? sixelPageCached(cols, p) : pageBuffer(p);
+    job.catch(() => {});
   }
 
   function statusBar() {
@@ -207,6 +216,11 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
       }
     } catch (err) {
       logger.warn('viewer draw failed', err);
+      // The screen now shows error text, not the last frame - drop the delta
+      // baseline so a later draw of the same geometry repaints instead of
+      // being skipped as "identical".
+      shownTop = null;
+      shownSig = null;
       stdout.write(`${ESC}[2J${ESC}[H${ESC}[0m`);
       stdout.write(`Error: ${err.message}\r\n\r\nn/p chapter · q back\r\n`);
     }
@@ -215,12 +229,15 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
   // Whole-viewport frame: home + overwrite (no full ESC[2J each step - that
   // clear-to-blank is what made scrolling blink), erase only the rows a shorter
   // image leaves below, then the status bar. One atomic write avoids partial
-  // frames and extra syscalls.
+  // frames and extra syscalls. Text parts are UTF-8: the status bar carries
+  // ·/←→/↑↓, which latin1 mangled into C1 control bytes (0x90 is an 8-bit DCS
+  // introducer!) on modern terminals. The sixel window is pure ASCII bytes, so
+  // it's unaffected either way.
   function composeFull(sixelBuf, { fullClear, imageRows, imgRows, rows }) {
     const prefix = fullClear ? `${ESC}[2J${ESC}[H` : `${ESC}[H`;
     let suffix = imageRows < imgRows ? `${ESC}[${imageRows + 1};1H${ESC}[0J` : '';
     suffix += `${ESC}[${rows};1H${ESC}[7m${statusBar()}${ESC}[0m`;
-    return Buffer.concat([Buffer.from(prefix, 'latin1'), sixelBuf, Buffer.from(suffix, 'latin1')]);
+    return Buffer.concat([Buffer.from(prefix), sixelBuf, Buffer.from(suffix)]);
   }
 
   // Strip-scroll frame (opt-in): scroll the image area with the terminal and
@@ -244,7 +261,8 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
       head = `${region}${ESC}[1;1H${`${ESC}M`.repeat(dc)}${reset}${ESC}[1;1H`;
       strip = sliceSixelPage(page, { startBand: to, numBands: -delta }).sixel;
     }
-    return Buffer.concat([Buffer.from(head, 'latin1'), strip, Buffer.from(status, 'latin1')]);
+    // UTF-8 for the text parts (status bar glyphs) - see composeFull.
+    return Buffer.concat([Buffer.from(head), strip, Buffer.from(status)]);
   }
 
   // Coalescing scheduler: while a draw runs, extra requests collapse into a
@@ -265,6 +283,7 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
       } finally {
         drawing = false;
       }
+      prefetchNext(); // input burst settled - warm the next page off the hot path
     })();
   }
 
@@ -279,10 +298,12 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
     return true;
   }
   function nextPage() {
-    if (pages && pi < pages.length - 1) { pi += 1; scroll = 0; shownTop = null; }
-    else changeChapter(1);
+    if (!pages) return; // chapter still loading - a blind advance would skip it
+    if (pi < pages.length - 1) { pi += 1; scroll = 0; shownTop = null; }
+    else changeChapter(1); // incl. a pageless chapter (pages=[]) - arrows move on
   }
   function prevPage() {
+    if (!pages) return;
     if (pi > 0) { pi -= 1; scroll = 0; shownTop = null; }
     else changeChapter(-1);
   }
@@ -298,41 +319,50 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
   const onResize = () => { inputSeq += 1; schedule({ fullClear: true }); };
   try {
     await draw({ fullClear: true });
+    prefetchNext(); // the first draw bypasses schedule(), so warm page 2 here
     stdout.on('resize', onResize);
 
     await new Promise((resolve) => {
       onKey = (data) => {
-        const k = data.toString('latin1');
         const pageStep = Math.max(1, size().rows - 2);
+        // Fast autorepeat (or paste) batches several keypresses into one data
+        // event - tokenize and handle each, or most of a rapid scroll is lost.
+        let dirty = false;
+        for (let k of tokenizeKeys(data.toString('latin1'))) {
+          if (k.length === 3 && k[0] === ESC && k[1] === 'O') k = `${ESC}[${k[2]}`; // SS3 arrows → CSI
 
-        if (k === 'q' || k === ESC) { resolve(); return; }
-        if (k === ' ') {
-          // space = read-through: scroll a full page, then advance at the bottom
-          if (fitWidth && scroll < maxScroll) scroll = Math.min(maxScroll, scroll + pageStep);
-          else nextPage();
-        } else if (k === 'd' || k === `${ESC}[C`) {
-          nextPage();           // → / d : next page
-        } else if (k === 'a' || k === `${ESC}[D`) {
-          prevPage();           // ← / a : previous page
-        } else if (k === 'j' || k === `${ESC}[B`) {
-          scroll = Math.min(maxScroll, scroll + scrollStep);
-        } else if (k === 'k' || k === `${ESC}[A`) {
-          scroll = Math.max(0, scroll - scrollStep);
-        } else if (k === 'n' || k === 'N') {
-          changeChapter(1);     // n / N : next chapter
-        } else if (k === 'p' || k === 'P') {
-          changeChapter(-1);    // p / P : previous chapter
-        } else if (k === 'f') {
-          fitWidth = !fitWidth;
-          scroll = 0;
-          shownTop = null; shownSig = null; // render path changes → fresh baseline
-        } else if (k === 'g') {
-          scroll = 0;          // jump to top
-        } else if (k === 'G') {
-          scroll = maxScroll;  // jump to bottom
-        } else {
-          return; // ignore other keys without redrawing
+          // \x03 = Ctrl+C: raw mode swallows SIGINT, so honour it as quit here.
+          if (k === 'q' || k === ESC || k === '\x03') { resolve(); return; }
+          if (k === ' ') {
+            // space = read-through: scroll a full page, then advance at the bottom
+            if (fitWidth && scroll < maxScroll) scroll = Math.min(maxScroll, scroll + pageStep);
+            else nextPage();
+          } else if (k === 'd' || k === `${ESC}[C`) {
+            nextPage();           // → / d : next page
+          } else if (k === 'a' || k === `${ESC}[D`) {
+            prevPage();           // ← / a : previous page
+          } else if (k === 'j' || k === `${ESC}[B`) {
+            scroll = Math.min(maxScroll, scroll + scrollStep);
+          } else if (k === 'k' || k === `${ESC}[A`) {
+            scroll = Math.max(0, scroll - scrollStep);
+          } else if (k === 'n' || k === 'N') {
+            changeChapter(1);     // n / N : next chapter
+          } else if (k === 'p' || k === 'P') {
+            changeChapter(-1);    // p / P : previous chapter
+          } else if (k === 'f') {
+            fitWidth = !fitWidth;
+            scroll = 0;
+            shownTop = null; shownSig = null; // render path changes → fresh baseline
+          } else if (k === 'g') {
+            scroll = 0;          // jump to top
+          } else if (k === 'G') {
+            scroll = maxScroll;  // jump to bottom
+          } else {
+            continue; // unrecognized token - doesn't dirty the frame
+          }
+          dirty = true;
         }
+        if (!dirty) return; // nothing recognized - no redraw
         // Update state synchronously, then coalesce the redraw - rapid repeats
         // collapse into the fewest draws instead of being dropped mid-draw.
         inputSeq += 1;
