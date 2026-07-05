@@ -13,11 +13,24 @@ const DEFAULT_CELL_H = 20;
 // resolution. --exact-size + font-ratio 1/1 makes chafa emit ~1 image px → 1
 // sixel px, so the displayed size is exactly what we sized the image to - no
 // dependence on chafa guessing the terminal's cell size through a pipe.
-export async function encodePixels(buffer, { format = 'sixel' } = {}) {
+//
+// `colors` (optional) maps to chafa's --colors MODE ('full' | '240' | '16' |
+// '8' | '2' | 'none'). Omit it to use chafa's default (full). The viewer's
+// motion-quality path passes '16' for glide frames: on manga content that cuts
+// sixel byte size ~4-16x (a 1.3MB color page -> ~290KB, a 3.7MB gray page ->
+// ~230KB) at constant display size, which is the difference between ~7fps and
+// ~40fps on a slow terminal pixel pipeline. Landing frames use the default
+// (full color) for a crisp image at rest.
+export async function encodePixels(buffer, { format = 'sixel', colors } = {}) {
   const { stdout } = await withTempImage(buffer, (file) =>
     execFileAsync(
       'chafa',
-      ['--format', format, '--exact-size', 'on', '--font-ratio', '1/1', '--animate', 'off', file],
+      [
+        '--format', format, '--exact-size', 'on',
+        '--font-ratio', '1/1', '--animate', 'off',
+        ...(colors ? ['--colors', colors] : []),
+        file,
+      ],
       { maxBuffer: 256 * 1024 * 1024, encoding: 'buffer' },
     ),
   );
@@ -123,8 +136,10 @@ export function parseSixelPage(raw) {
 }
 
 // Encode a full page to a parsed, sliceable sixel (one chafa call per page).
-export async function encodeSixelPage(buffer) {
-  const raw = (await encodePixels(buffer, { format: 'sixel' })).toString('latin1');
+// `colors` (optional) is forwarded to encodePixels; the motion-quality glide
+// path passes '16' for a smaller, lower-fidelity encode.
+export async function encodeSixelPage(buffer, { colors } = {}) {
+  const raw = (await encodePixels(buffer, { format: 'sixel', colors })).toString('latin1');
   return parseSixelPage(raw);
 }
 

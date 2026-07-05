@@ -2,7 +2,9 @@
 // key-repeat (or a paste) the terminal delivers several keypresses in ONE
 // 'data' event - "\x1b[B\x1b[B\x1b[Bjj" - and a handler that compares the
 // whole chunk against single sequences silently drops all of them. Tokens:
-//   - a complete CSI sequence  "\x1b[...F"  (F = final byte @..~)
+//   - a complete CSI sequence  "\x1b[...F"  (F = final byte @..~; this covers
+//     SGR mouse reports "\x1b[<b;x;yM|m" too - '<', digits and ';' are all
+//     parameter bytes, so a report stays one token)
 //   - an SS3 sequence          "\x1bOF"     (arrows in application-keys mode)
 //   - a lone trailing ESC                   (a real Escape press)
 //   - any single character

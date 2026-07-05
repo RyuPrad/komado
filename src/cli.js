@@ -12,7 +12,8 @@ Usage:
   komado --help          show this help
 
 On a sixel/kitty terminal, opening a chapter launches a full-resolution pixel
-viewer:  ←/→ or a/d page · ↑/↓ pan · N/P chapter · f fit-width/whole-page · q back
+viewer:  ←/→ or a/d page · ↑/↓ or mouse wheel pan (smooth) · N/P chapter ·
+         f fit-width/whole-page · q back
 
 Otherwise the in-terminal cell reader is used:
   ↑/↓ or j/k   scroll        ←/→ or h/l   prev/next page

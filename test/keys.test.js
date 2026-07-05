@@ -46,4 +46,14 @@ describe('tokenizeKeys', () => {
   it('emits an unterminated CSI fragment as-is (callers ignore it)', () => {
     expect(tokenizeKeys(`${ESC}[`)).toEqual([`${ESC}[`]);
   });
+
+  it('keeps SGR mouse reports whole (wheel scrolling depends on it)', () => {
+    expect(tokenizeKeys(`${ESC}[<65;40;12M`)).toEqual([`${ESC}[<65;40;12M`]);
+    expect(tokenizeKeys(`${ESC}[<0;10;5m`)).toEqual([`${ESC}[<0;10;5m`]); // release
+  });
+
+  it('splits a fast wheel burst mixed with keys', () => {
+    expect(tokenizeKeys(`${ESC}[<65;1;1M${ESC}[<65;1;1Mj${ESC}[B`))
+      .toEqual([`${ESC}[<65;1;1M`, `${ESC}[<65;1;1M`, 'j', `${ESC}[B`]);
+  });
 });

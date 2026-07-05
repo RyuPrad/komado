@@ -69,3 +69,37 @@ describe.skipIf(!hasChafa)('encodeSixelPage (chafa)', () => {
     expect(win).toMatch(/q"\d+;\d+;\d+;48/); // Pv = 8 × 6
   });
 });
+
+describe.skipIf(!hasChafa)('encodeSixelPage colors option (motion-quality)', () => {
+  it('forwards colors to chafa: a 16-color encode is materially smaller than full', async () => {
+    // Graduated + noisy content so both palettes have real work; flat color would
+    // make the two encodes coincidentally similar in size.
+    const w = 200, h = 240, c = 3;
+    const data = Buffer.alloc(w * h * c);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * c;
+      data[i] = (x * 2) % 256; data[i + 1] = (y * 2) % 256;
+      data[i + 2] = ((x + y) % 256); // full hue range, not flat
+    }
+    const png = await sharp(data, { raw: { width: w, height: h, channels: c } }).png().toBuffer();
+
+    const full = await encodeSixelPage(png);
+    const low = await encodeSixelPage(png, { colors: '16' });
+
+    // Both must be valid, sliceable pages.
+    expect(full.bands.length).toBeGreaterThan(0);
+    expect(low.bands.length).toBe(full.bands.length); // same pixel height
+    expect(low.bands.every((b) => b.startsWith('#'))).toBe(true);
+
+    // The 16-color palette is a strict subset: fewer register definitions.
+    const regs = (p) => (p.palette.match(/#\d+;2;/g) || []).length;
+    expect(regs(low)).toBeLessThan(regs(full));
+    expect(regs(low)).toBeLessThanOrEqual(16);
+
+    // And the byte cost drops on varied content - this is the whole point of
+    // the motion-quality tier (the viewer asserts on it via avgBytes in the log).
+    const sizeOf = (p) => sliceSixelPage(p, { startBand: 0, numBands: p.bands.length }).sixel.length;
+    expect(sizeOf(low)).toBeLessThan(sizeOf(full));
+  });
+});
+
