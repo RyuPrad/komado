@@ -8,13 +8,34 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run lint
+      - run: npm test
+
+  pixel:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+      - name: Install chafa
+        run: sudo apt-get update && sudo apt-get install -y chafa
       - run: npm ci
       - run: npm run build
-      - run: npm run lint
-      - run: npm test
+      - name: Test chafa-backed rendering
+        run: npm test -- test/sixel-page.test.js test/sixel-prepare.test.js
+      - name: Smoke-test the pixel viewer in a PTY
+        run: python3 test/integration/pty-viewer.py

@@ -3,7 +3,7 @@ import { setProgress } from './state/store.js';
 import { chapterLabel } from './domain/shape.js';
 import { encodePixels, prepareImage, scalePage, encodeSixelPage, sliceSixelPage } from './render/sixel.js';
 import { renderStatusBar, hintLine } from './render/statusbar.js';
-import { tokenizeKeys } from './lib/keys.js';
+import { createKeyTokenizer } from './lib/keys.js';
 import { easeToward } from './lib/motion.js';
 import { logger } from './lib/logger.js';
 
@@ -113,15 +113,15 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
   // is instant and the next page can be prefetched; storing PROMISES means a
   // page turn that lands mid-prefetch joins the in-flight work instead of
   // duplicating it. A rejected entry evicts itself so a retry can succeed.
-  const rawCache = new Map();    // `${ci}:${pi}`                -> Promise<Buffer>
-  const scaledCache = new Map(); // `${ci}:${pi}:${cols}:${cw}`  -> Promise<{buffer,width,height}>
-  const sixelCache = new Map();  // `${ci}:${pi}:${cols}:${cw}`  -> Promise<parsed sixel page>
+  const rawCache = new Map();    // `${chapterId}:${pi}`                -> Promise<Buffer>
+  const scaledCache = new Map(); // `${chapterId}:${pi}:${cols}:${cw}`  -> Promise<scaled page>
+  const sixelCache = new Map();  // `${chapterId}:${pi}:${cols}:${cw}`  -> Promise<parsed sixel page>
   // Separate cache for the low-color "motion-quality" glide encode. Kept apart
   // from sixelCache so a glide encode can NEVER evict the precious full-color
   // page (which is what the landing frame and the next page-open need). The two
   // share nothing: a different --colors mode produces a different palette, so
   // the parsed page objects (bands + palette) aren't reusable across tiers.
-  const glideCache = new Map();  // `${ci}:${pi}:${cols}:${cw}`  -> Promise<parsed sixel page (16-color)>
+  const glideCache = new Map();  // `${chapterId}:${pi}:${cols}:${cw}`  -> Promise<16-color page>
   function memo(map, key, max, make) {
     let p = map.get(key);
     if (p) { map.delete(key); map.set(key, p); return p; } // refresh recency
@@ -138,7 +138,7 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
   let inputSeq = 0;
   let drawing = false;
   let pending = false;
-  let pendingFullClear = false;
+  let needsFullClear = false;
   let drawDone = Promise.resolve(); // settles when the current draw run (incl. coalesced passes) ends
 
   const size = () => ({
@@ -146,26 +146,21 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
     rows: Math.max(6, stdout.rows || 24),
   });
 
-  async function ensurePages() {
-    if (pages) return;
-    pages = await source.getPages(chapters[ci].id);
-    pi = Math.max(0, Math.min(pi, pages.length - 1));
-  }
-
   // The page bytes, fetched once per page (not per scroll step).
-  const pageBuffer = (p = pi) =>
-    memo(rawCache, `${ci}:${p}`, 6, () => source.loadPageBuffer(pages[p]));
+  const pageBuffer = (state) =>
+    memo(rawCache, `${state.chapter.id}:${state.pi}`, 6,
+      () => source.loadPageBuffer(state.page));
 
   // The page scaled to full viewport width, reused across vertical scrolling.
-  const scaledPage = (cols, p = pi) =>
-    memo(scaledCache, `${ci}:${p}:${cols}:${caps.cellW || ''}`, 3,
-      async () => scalePage(await pageBuffer(p), { cols, cellW: caps.cellW }));
+  const scaledPage = (state, cols) =>
+    memo(scaledCache, `${state.chapter.id}:${state.pi}:${cols}:${caps.cellW || ''}`, 3,
+      async () => scalePage(await pageBuffer(state), { cols, cellW: caps.cellW }));
 
   // The page encoded to a sliceable sixel ONCE (palette + 6px bands), so every
   // scroll step is a band-window slice instead of a fresh chafa+sharp encode.
-  const sixelPageCached = (cols, p = pi) =>
-    memo(sixelCache, `${ci}:${p}:${cols}:${caps.cellW || ''}`, 3,
-      async () => encodeSixelPage((await scaledPage(cols, p)).buffer));
+  const sixelPageCached = (state, cols) =>
+    memo(sixelCache, `${state.chapter.id}:${state.pi}:${cols}:${caps.cellW || ''}`, 3,
+      async () => encodeSixelPage((await scaledPage(state, cols)).buffer));
 
   // Motion-quality: during an animated glide, draw low-color (16) frames so each
   // costs ~290KB not ~1.9MB through the terminal pixel pipeline - the difference
@@ -176,9 +171,9 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
   // strip-capable terminal's glide frames are already cheap (delta strips).
   const motionQuality = format === 'sixel'
     && process.env.KOMADO_NO_MOTION_QUALITY !== '1';
-  const sixelGlideCached = (cols, p = pi) =>
-    memo(glideCache, `${ci}:${p}:${cols}:${caps.cellW || ''}`, 3,
-      async () => encodeSixelPage((await scaledPage(cols, p)).buffer, { colors: '16' }));
+  const sixelGlideCached = (state, cols) =>
+    memo(glideCache, `${state.chapter.id}:${state.pi}:${cols}:${caps.cellW || ''}`, 3,
+      async () => encodeSixelPage((await scaledPage(state, cols)).buffer, { colors: '16' }));
   // `gliding` is set by animate() while a pan is in flight; draw() reads it to
   // pick the tier. The landing frame (scroll === scrollTarget) always uses full
   // color regardless, so the crisp image lands the instant motion stops.
@@ -192,74 +187,130 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
   function prefetchNext() {
     if (!pages || pi + 1 >= pages.length) return;
     const p = pi + 1;
+    const state = { ci, pi: p, chapter: chapters[ci], pages, page: pages[p] };
     const { cols } = size();
     if (fitWidth && format === 'sixel') {
-      sixelPageCached(cols, p).catch(() => {});
-      if (motionQuality) sixelGlideCached(cols, p).catch(() => {}); // warm glide tier too
+      sixelPageCached(state, cols).catch(() => {});
+      if (motionQuality) sixelGlideCached(state, cols).catch(() => {}); // warm glide tier too
     } else {
-      pageBuffer(p).catch(() => {});
+      pageBuffer(state).catch(() => {});
     }
   }
 
   // Fully styled (SGR inside, trailing reset) - callers just position and write.
-  function statusBar() {
+  function statusBar(state) {
     return renderStatusBar({
-      cols: size().cols,
+      cols: state.cols,
       title: manga.title,
-      info: chapterLabel(chapters[ci]),
-      page: `${pi + 1}/${pages ? pages.length : '?'}`,
+      info: chapterLabel(state.chapter),
+      page: `${state.pi + 1}/${state.pages.length}`,
       hints: [
         { keys: 'a/d', label: 'page' },
         { keys: 'j/k', label: 'pan' },
         { keys: 'n/p', label: 'chapter' },
-        { keys: 'f', label: 'fit', active: !fitWidth },
+        { keys: 'f', label: 'fit', active: !state.fitWidth },
         { keys: 'q', label: 'back' },
       ],
     });
   }
 
+  function captureDrawState() {
+    const dimensions = size();
+    return Object.freeze({
+      seq: inputSeq,
+      ci,
+      pi,
+      chapter: chapters[ci],
+      pages,
+      page: pages?.[pi],
+      cols: dimensions.cols,
+      rows: dimensions.rows,
+      fitWidth,
+      scroll,
+      scrollTarget,
+    });
+  }
+
+  // A draw owns exactly one immutable state snapshot. Any input, chapter/page
+  // replacement, or geometry change while an image fetch/encode is pending
+  // revokes that ownership. Stale continuations must not paint, stamp the delta
+  // baseline, persist progress, or turn an encoder error into the current page's
+  // error screen.
+  function isDrawStale(state) {
+    const dimensions = size();
+    return closed
+      || state.seq !== inputSeq
+      || state.ci !== ci
+      || state.pi !== pi
+      || state.chapter !== chapters[ci]
+      || state.pages !== pages
+      || (state.pages && state.page !== state.pages[state.pi])
+      || state.cols !== dimensions.cols
+      || state.rows !== dimensions.rows
+      || state.fitWidth !== fitWidth
+      || state.scroll !== scroll
+      || state.scrollTarget !== scrollTarget;
+  }
+
   async function draw({ fullClear = false } = {}) {
-    const seq = inputSeq;
-    const { cols, rows } = size();
-    const imgRows = rows - 1; // reserve the bottom row for the status bar
+    let state = captureDrawState();
     try {
-      await ensurePages();
-      if (!pages.length) throw new Error('This chapter has no hosted pages.');
+      if (!state.pages) {
+        const loadedPages = await source.getPages(state.chapter.id);
+        if (isDrawStale(state)) return;
+
+        // Publish loaded pages only while this chapter snapshot still owns the
+        // state. The old implementation assigned after await unconditionally,
+        // allowing an old chapter's page list to land in a newer chapter.
+        pages = loadedPages;
+        pi = Math.max(0, Math.min(state.pi, loadedPages.length - 1));
+        state = Object.freeze({ ...state, pi, pages, page: pages[pi] });
+      }
+      if (!state.pages.length) throw new Error('This chapter has no hosted pages.');
+      if (isDrawStale(state)) return;
+
+      const { cols, rows } = state;
+      const imgRows = rows - 1; // reserve the bottom row for the status bar
+      const status = statusBar(state);
 
       // Build the bytes for this frame (null ⇒ nothing changed, skip the write).
-      // Default sixel path windows the pre-encoded page bands; with strip-scroll
-      // opted in, a slot-sized move scrolls the terminal and repaints only the
-      // exposed strip. 'fit'/kitty fall back to a per-frame encode.
-      // `frameKind` tags the result for instrumentation (strip = cheap delta,
-      // full = whole-viewport repaint = the lag suspect on slow pixel pipelines).
+      // All display bookkeeping stays local until the complete frame has been
+      // produced and the snapshot passes its final freshness check.
       let frame = null;
       let frameKind = null;
       let imageRows = imgRows;
       let mScroll = 0;
-      let sScroll = scroll;
+      let sScroll = state.scroll;
+      let nextShownTop = shownTop;
+      let nextShownSig = shownSig;
 
-      if (fitWidth && format === 'sixel') {
-        // Motion-quality tier: while gliding (and not on the landing frame),
-        // fetch the low-color page so each animation frame flushes ~290KB not
-        // ~1.9MB. The landing frame (scroll === scrollTarget) uses full color.
-        // Falling back to sixelPageCached if the glide encode isn't warm yet is
-        // fine - it just means the first frame or two of a pan are full-color
-        // before the 16-color page resolves (it's prefetched, so rarely seen).
-        const tier = motionQuality && gliding && scroll !== scrollTarget ? 'g' : 'f';
+      if (state.fitWidth && format === 'sixel') {
+        // The requested tier can fall back from glide to full. Signatures and
+        // instrumentation must describe the page actually used, because the
+        // two encodes have different palettes and cannot share a delta baseline.
+        let tier = motionQuality && gliding && state.scroll !== state.scrollTarget ? 'g' : 'f';
         let page;
-        try {
-          page = tier === 'g' ? await sixelGlideCached(cols) : await sixelPageCached(cols);
-        } catch {
-          page = await sixelPageCached(cols); // glide encode failed -> full color
+        if (tier === 'g') {
+          try {
+            page = await sixelGlideCached(state, cols);
+          } catch {
+            if (isDrawStale(state)) return;
+            tier = 'f';
+            page = await sixelPageCached(state, cols);
+          }
+        } else {
+          page = await sixelPageCached(state, cols);
         }
+        if (isDrawStale(state)) return;
+
         const viewBands = Math.max(1, Math.floor((imgRows * cellH) / 6));
         const maxStart = Math.max(0, page.bands.length - viewBands);
-        let topBand = Math.round((scroll * cellH) / 6);
+        let topBand = Math.round((state.scroll * cellH) / 6);
         if (stripScroll) {
           // Glide on the slot grid so consecutive frames strip-scroll; within
           // a slot of the target, land on the exact band (one full repaint).
           // Legacy discrete mode (KOMADO_NO_SMOOTH) always slot-rounds.
-          const targetBand = Math.round((scrollTarget * cellH) / 6);
+          const targetBand = Math.round((state.scrollTarget * cellH) / 6);
           if (!smoothPan || Math.abs(targetBand - topBand) >= slotBands) {
             topBand = Math.round(topBand / slotBands) * slotBands;
           }
@@ -270,10 +321,7 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
         mScroll = (maxStart * 6) / cellH;
         sScroll = (topBand * 6) / cellH;
 
-        // Stamp the tier into the geometry signature so a tier transition
-        // (glide -> full-color landing) can't delta-reuse against the wrong
-        // palette baseline: it forces a clean full repaint on landing.
-        const geomSig = `${tier}:${ci}:${pi}:${cols}:${imgRows}`;
+        const geomSig = `${tier}:${state.chapter.id}:${state.pi}:${cols}:${imgRows}`;
         const reuse = !fullClear && shownTop !== null && shownSig === geomSig;
         const delta = reuse ? topBand - shownTop : 0;
 
@@ -281,90 +329,99 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
           frame = null; // identical frame already on screen
         } else if (stripScroll && reuse && delta !== 0
             && Math.abs(delta) % slotBands === 0 && Math.abs(delta) < viewBands) {
-          frame = buildDeltaFrame(page, { from: shownTop, to: topBand, viewBands, imgRows, rows });
+          frame = buildDeltaFrame(page, {
+            from: shownTop, to: topBand, viewBands, imgRows, rows, status,
+          });
           frameKind = 'strip';
         } else {
           const win = sliceSixelPage(page, { startBand: topBand, numBands: viewBands }).sixel;
-          frame = composeFull(win, { fullClear, imageRows, imgRows, rows });
+          frame = composeFull(win, { fullClear, imageRows, imgRows, rows, status });
           frameKind = tier === 'g' ? 'glide' : 'full';
         }
-        shownTop = topBand;
-        shownSig = geomSig;
+        nextShownTop = topBand;
+        nextShownSig = geomSig;
       } else {
-        shownTop = null; // delta baseline doesn't apply to this render path
+        nextShownTop = null; // delta baseline doesn't apply to this render path
         let prepared;
-        if (fitWidth) {
-          const page = await scaledPage(cols);
+        if (state.fitWidth) {
+          const page = await scaledPage(state, cols);
+          if (isDrawStale(state)) return;
           prepared = await prepareImage(null, {
-            mode: 'width', cols, rows: imgRows, scroll,
+            mode: 'width', cols, rows: imgRows, scroll: state.scroll,
             cellW: caps.cellW, cellH: caps.cellH, scaled: page,
           });
         } else {
-          prepared = await prepareImage(await pageBuffer(), {
+          const raw = await pageBuffer(state);
+          if (isDrawStale(state)) return;
+          prepared = await prepareImage(raw, {
             mode: 'fit', cols, rows: imgRows, cellW: caps.cellW, cellH: caps.cellH,
           });
         }
-        imageRows = prepared.imageRows; mScroll = prepared.maxScroll; sScroll = prepared.scroll;
-        const sig = `f:${ci}:${pi}:${sScroll}:${cols}:${imgRows}`;
+        if (isDrawStale(state)) return;
+
+        imageRows = prepared.imageRows;
+        mScroll = prepared.maxScroll;
+        sScroll = prepared.scroll;
+        const sig = `f:${state.chapter.id}:${state.pi}:${sScroll}:${cols}:${imgRows}`;
         if (fullClear || sig !== shownSig) {
           const buf = await encodePixels(prepared.buffer, { format });
+          if (isDrawStale(state)) return;
           // 'fit' images are letterboxed (top-left, smaller than the viewport), so
           // clear first or the previous full-width view shows through the margins.
-          frame = composeFull(buf, { fullClear: fullClear || !fitWidth, imageRows, imgRows, rows });
+          frame = composeFull(buf, {
+            fullClear: fullClear || !state.fitWidth, imageRows, imgRows, rows, status,
+          });
           frameKind = 'full';
-          shownSig = sig;
         }
+        nextShownSig = sig;
       }
 
-      // Adopt the clamped scroll only if the user hasn't moved since this draw
-      // started; otherwise the newer keypress + its coalesced redraw owns it (a
-      // blind write-back here would undo input that arrived mid-render).
-      if (seq === inputSeq) {
-        maxScroll = mScroll;
-        // Smooth pan keeps the eased float authoritative - snapping it to the
-        // drawn band each frame can stall the approach (ease forward < half a
-        // band, quantize back, repeat). Discrete modes adopt the drawn
-        // position so slot/step rounding stays normalized.
-        scroll = Math.max(0, Math.min(smoothNow() ? scroll : sScroll, mScroll));
-        // Geometry can shrink under the animator (resize, shorter page) -
-        // rein the target in too, or it eases toward an unrenderable spot.
-        scrollTarget = Math.max(0, Math.min(scrollTarget, mScroll));
-      }
+      // This is the last check before stdout.write. It is deliberately after
+      // every cold fetch/scale/encode so an old result can never be paired with
+      // the status/progress fields from whatever state happens to be current.
+      if (isDrawStale(state)) return;
 
-      // Await the flush: this is the animator's backpressure signal - a slow
-      // terminal makes the next tick fire later with a larger dt, so motion
-      // stays time-correct at whatever frame rate the terminal can swallow.
-      // The closed check matters mid-quit: an in-flight animation draw must
-      // not land a stray frame on top of the remounted Ink screen.
-      if (frame && !closed) {
-        // Time the flush: this is the backpressure signal AND the lag probe.
-        // A flush > ~20ms steady means the terminal pixel pipeline (xterm sixel
-        // parser + WSLg/X) can't keep up -> that's lag, and a motion-quality
-        // encode for glide frames is the fix, not easing tweaks.
+      if (frame) {
+        // Await the flush: terminal backpressure paces the smooth animator.
         const flushT0 = Date.now();
         const buf = Buffer.concat([SYNC_BEGIN, frame, SYNC_END]);
         await new Promise((res) => stdout.write(buf, res));
+        if (isDrawStale(state)) {
+          // The write began while current but input arrived during its flush.
+          // Force the queued draw to repaint instead of delta-reusing a baseline
+          // whose final terminal state is now ambiguous.
+          shownTop = null;
+          shownSig = null;
+          return;
+        }
         if (frameKind) perfFrame(Date.now() - flushT0, buf.length, frameKind);
       }
+
+      // Commit display and reader state only after the frame is known to belong
+      // to this snapshot. No awaits occur below, so the commit is atomic with
+      // respect to raw input and resize events.
+      shownTop = nextShownTop;
+      shownSig = nextShownSig;
+      maxScroll = mScroll;
+      scroll = Math.max(0, Math.min(smoothPan && state.fitWidth ? state.scroll : sScroll, mScroll));
+      scrollTarget = Math.max(0, Math.min(state.scrollTarget, mScroll));
 
       setProgress(manga.key, {
         source: sourceId,
         mangaId: manga.id,
         mangaTitle: manga.title,
-        chapterId: chapters[ci].id,
-        chapterNumber: chapters[ci].number,
-        page: pi,
+        chapterId: state.chapter.id,
+        chapterNumber: state.chapter.number,
+        chapterVolume: state.chapter.volume,
+        page: state.pi,
       });
-      // Last page reached → push a read-marker to MangaDex (self-guarded/deduped).
-      // `pages &&`: a rapid n/p runs changeChapter() (pages = null) during one of
-      // this draw's awaits, after it started - guard before reading .length, or the
-      // stale tail throws "Cannot read properties of null (reading 'length')".
-      if (pages && pi === pages.length - 1 && source.syncChapterRead) {
-        source.syncChapterRead(manga.id, chapters[ci].id);
+      if (state.pi === state.pages.length - 1 && source.syncChapterRead) {
+        source.syncChapterRead(manga.id, state.chapter.id);
       }
+      return true;
     } catch (err) {
+      if (isDrawStale(state)) return; // stale failures belong to an abandoned page
       logger.warn('viewer draw failed', err);
-      if (closed) return; // quitting - don't paint an error over the Ink screen
       scrollTarget = scroll; // halt any in-flight pan animation on the error screen
       // The screen now shows error text, not the last frame - drop the delta
       // baseline so a later draw of the same geometry repaints instead of
@@ -374,6 +431,7 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
       stdout.write(`${ESC}[2J${ESC}[H${ESC}[0m`);
       const hints = hintLine([{ keys: 'n/p', label: 'chapter' }, { keys: 'q', label: 'back' }]);
       stdout.write(`${ESC}[1;38;5;203mError:${ESC}[0m ${err.message}\r\n\r\n${hints}\r\n`);
+      return true;
     }
   }
 
@@ -384,10 +442,10 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
   // manga title/chapter label (arbitrary Unicode), which latin1 mangled into C1
   // control bytes (0x90 is an 8-bit DCS introducer!) on modern terminals. The
   // sixel window is pure ASCII bytes, so it's unaffected either way.
-  function composeFull(sixelBuf, { fullClear, imageRows, imgRows, rows }) {
+  function composeFull(sixelBuf, { fullClear, imageRows, imgRows, rows, status }) {
     const prefix = fullClear ? `${ESC}[2J${ESC}[H` : `${ESC}[H`;
     let suffix = imageRows < imgRows ? `${ESC}[${imageRows + 1};1H${ESC}[0J` : '';
-    suffix += `${ESC}[${rows};1H${statusBar()}`;
+    suffix += `${ESC}[${rows};1H${status}`;
     return Buffer.concat([Buffer.from(prefix), sixelBuf, Buffer.from(suffix)]);
   }
 
@@ -396,12 +454,12 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
   // re-sending the whole viewport. Valid only for slot-sized shifts (whole cells
   // AND whole bands), so the moved pixels stay band-aligned and there's no seam.
   // Uses LF/RI inside a DECSTBM region (the most widely supported scroll path).
-  function buildDeltaFrame(page, { from, to, viewBands, imgRows, rows }) {
+  function buildDeltaFrame(page, { from, to, viewBands, imgRows, rows, status }) {
     const delta = to - from; // bands, a non-zero multiple of slotBands
     const dc = Math.round((Math.abs(delta) * 6) / cellH); // whole cells scrolled
     const region = `${ESC}[1;${imgRows}r`;
     const reset = `${ESC}[r`;
-    const status = `${ESC}[${rows};1H${statusBar()}`;
+    const statusLine = `${ESC}[${rows};1H${status}`;
     let head; let strip;
     if (delta > 0) {
       // content up → repaint the freed strip at the bottom
@@ -413,7 +471,7 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
       strip = sliceSixelPage(page, { startBand: to, numBands: -delta }).sixel;
     }
     // UTF-8 for the text parts (status bar glyphs) - see composeFull.
-    return Buffer.concat([Buffer.from(head), strip, Buffer.from(status)]);
+    return Buffer.concat([Buffer.from(head), strip, Buffer.from(statusLine)]);
   }
 
   // Coalescing scheduler: while a draw runs, extra requests collapse into a
@@ -422,16 +480,19 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
   // promise; the pan animator awaits it to pace itself to the terminal.
   function schedule({ fullClear = false } = {}) {
     if (closed) return;
-    if (fullClear) pendingFullClear = true;
+    if (fullClear) needsFullClear = true;
     if (drawing) { pending = true; return; }
     drawing = true;
     drawDone = (async () => {
       try {
         do {
           pending = false;
-          const fc = pendingFullClear;
-          pendingFullClear = false;
-          await draw({ fullClear: fc });
+          const fc = needsFullClear;
+          const committed = await draw({ fullClear: fc });
+          // A resize clear stays sticky until a fresh snapshot really paints it.
+          // If this pass went stale during an await, the queued current draw must
+          // still erase pixels outside a newly shrunken viewport.
+          if (fc && committed) needsFullClear = false;
         } while (pending);
       } finally {
         drawing = false;
@@ -445,13 +506,15 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
   // `reason` tags the gesture in komado.log under KOMADO_DEBUG (key/wheel/etc).
   let gestureReason = '';
   function pan(deltaCells, reason = '') {
-    gestureReason = reason || gestureReason;
-    panTo(scrollTarget + deltaCells);
+    return panTo(scrollTarget + deltaCells, reason);
   }
   function panTo(cells, reason = '') {
+    const next = Math.max(0, Math.min(maxScroll, cells));
+    if (next === scrollTarget) return false;
     if (reason) gestureReason = reason;
-    scrollTarget = Math.max(0, Math.min(maxScroll, cells));
+    scrollTarget = next;
     if (!smoothNow()) scroll = scrollTarget;
+    return true;
   }
 
   let animating = false;
@@ -504,23 +567,32 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
     pi = 0;
     scroll = 0;
     scrollTarget = 0;
+    maxScroll = 0;
     shownTop = null;
+    shownSig = null;
     pages = null;
     return true;
   }
   function nextPage() {
-    if (!pages) return; // chapter still loading - a blind advance would skip it
-    if (pi < pages.length - 1) { pi += 1; scroll = 0; scrollTarget = 0; shownTop = null; }
-    else changeChapter(1); // incl. a pageless chapter (pages=[]) - arrows move on
+    if (!pages) return false; // chapter still loading - a blind advance would skip it
+    if (pi < pages.length - 1) {
+      pi += 1; scroll = 0; scrollTarget = 0; maxScroll = 0; shownTop = null; shownSig = null;
+      return true;
+    }
+    return changeChapter(1); // incl. a pageless chapter (pages=[]) - arrows move on
   }
   function prevPage() {
-    if (!pages) return;
-    if (pi > 0) { pi -= 1; scroll = 0; scrollTarget = 0; shownTop = null; }
-    else changeChapter(-1);
+    if (!pages) return false;
+    if (pi > 0) {
+      pi -= 1; scroll = 0; scrollTarget = 0; maxScroll = 0; shownTop = null; shownSig = null;
+      return true;
+    }
+    return changeChapter(-1);
   }
 
   const prevRaw = stdin.isRaw;
   let onKey;
+  let keyTokenizer;
   // Ink leaves stdin unref'd after unmount, so a bare `await`-for-keypress won't
   // keep the process alive - it would exit the moment the first page is drawn.
   // A ref'd timer holds the event loop open until we're done.
@@ -529,22 +601,25 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
   // a narrower/shorter window can leave stale pixels outside the new image.
   const onResize = () => { inputSeq += 1; schedule({ fullClear: true }); };
   try {
-    await draw({ fullClear: true });
-    prefetchNext(); // the first draw bypasses schedule(), so warm page 2 here
+    // Listen before the cold initial render. A resize during its fetch/encode
+    // revokes that snapshot and queues a correctly-sized replacement instead
+    // of leaving the viewer blank until the first keypress.
+    stdout.on('resize', onResize);
+    schedule({ fullClear: true });
+    await drawDone;
     // Warm the motion-quality glide encode for the CURRENT page too, so the
     // first pan on page 1 doesn't stall on a cold 16-color chafa encode (the
     // full-color page is already cached from the draw above; the glide tier
     // is the one that's cold). No-op when motion-quality is off.
-    if (motionQuality) sixelGlideCached(size().cols).catch(() => {});
-    stdout.on('resize', onResize);
-
+    const current = captureDrawState();
+    if (motionQuality && current.page && !isDrawStale(current)) {
+      sixelGlideCached(current, current.cols).catch(() => {});
+    }
     await new Promise((resolve) => {
-      onKey = (data) => {
+      const handleTokens = (tokens) => {
         const pageStep = Math.max(1, size().rows - 2);
-        // Fast autorepeat (or paste) batches several keypresses into one data
-        // event - tokenize and handle each, or most of a rapid scroll is lost.
         let dirty = false;
-        for (let k of tokenizeKeys(data.toString('latin1'))) {
+        for (let k of tokens) {
           if (k.length === 3 && k[0] === ESC && k[1] === 'O') k = `${ESC}[${k[2]}`; // SS3 arrows → CSI
 
           // SGR mouse report "\x1b[<b;x;yM" (we only enable wheel-capable
@@ -555,8 +630,10 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
             if (k.endsWith('M')) {
               const btn = parseInt(k.slice(3), 10) & ~28;
               if (btn === 64 || btn === 65) {
-                pan(btn === 64 ? -WHEEL_CELLS : WHEEL_CELLS, btn === 64 ? 'wheel-up' : 'wheel-down');
-                dirty = true;
+                dirty = pan(
+                  btn === 64 ? -WHEEL_CELLS : WHEEL_CELLS,
+                  btn === 64 ? 'wheel-up' : 'wheel-down',
+                ) || dirty;
               }
             }
             continue;
@@ -566,37 +643,38 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
           if (k === 'q' || k === ESC || k === '\x03') { resolve(); return; }
           if (k === ' ') {
             // space = read-through: scroll a full page, then advance at the bottom
-            if (fitWidth && scrollTarget < maxScroll) pan(pageStep, 'space');
-            else nextPage();
+            dirty = (fitWidth && scrollTarget < maxScroll
+              ? pan(pageStep, 'space')
+              : nextPage()) || dirty;
           } else if (k === 'd' || k === `${ESC}[C`) {
-            nextPage();           // → / d : next page
+            dirty = nextPage() || dirty; // → / d : next page
           } else if (k === 'a' || k === `${ESC}[D`) {
-            prevPage();           // ← / a : previous page
+            dirty = prevPage() || dirty; // ← / a : previous page
           } else if (k === 'j' || k === `${ESC}[B`) {
-            pan(scrollStep, 'key-down');
+            dirty = pan(scrollStep, 'key-down') || dirty;
           } else if (k === 'k' || k === `${ESC}[A`) {
-            pan(-scrollStep, 'key-up');
+            dirty = pan(-scrollStep, 'key-up') || dirty;
           } else if (k === `${ESC}[6~`) {
-            pan(pageStep, 'pgdn');        // PgDn
+            dirty = pan(pageStep, 'pgdn') || dirty; // PgDn
           } else if (k === `${ESC}[5~`) {
-            pan(-pageStep, 'pgup');       // PgUp
+            dirty = pan(-pageStep, 'pgup') || dirty; // PgUp
           } else if (k === 'n' || k === 'N') {
-            changeChapter(1);     // n / N : next chapter
+            dirty = changeChapter(1) || dirty; // n / N : next chapter
           } else if (k === 'p' || k === 'P') {
-            changeChapter(-1);    // p / P : previous chapter
+            dirty = changeChapter(-1) || dirty; // p / P : previous chapter
           } else if (k === 'f') {
             fitWidth = !fitWidth;
             scroll = 0;
             scrollTarget = 0;
             shownTop = null; shownSig = null; // render path changes → fresh baseline
+            dirty = true;
           } else if (k === 'g') {
-            panTo(0, 'top');             // jump to top
+            dirty = panTo(0, 'top') || dirty; // jump to top
           } else if (k === 'G') {
-            panTo(maxScroll, 'bottom');  // jump to bottom
+            dirty = panTo(maxScroll, 'bottom') || dirty; // jump to bottom
           } else {
             continue; // unrecognized token - doesn't dirty the frame
           }
-          dirty = true;
         }
         if (!dirty) return; // nothing recognized - no redraw
         // Update targets synchronously, then draw once: discrete changes
@@ -609,6 +687,11 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
         if (smoothNow() && scroll !== scrollTarget) animate();
         else schedule();
       };
+      // Fast autorepeat can batch sequences, while PTY/SSH boundaries can split
+      // CSI, SS3, and mouse reports across data events. The stateful decoder
+      // handles both and delays a lone Escape just long enough to disambiguate it.
+      keyTokenizer = createKeyTokenizer(handleTokens);
+      onKey = (data) => keyTokenizer.push(data.toString('latin1'));
 
       // Enter raw mode *after* the first draw - Ink's unmount restores cooked
       // mode on a deferred tick, which would otherwise leave stdin line-buffered
@@ -627,6 +710,7 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
     clearInterval(keepAlive);
     stdout.removeListener('resize', onResize);
     if (onKey) stdin.removeListener('data', onKey);
+    keyTokenizer?.close();
     try { stdin.setRawMode(prevRaw); } catch { /* ignore */ }
     stdout.write(`${mouseOn ? `${ESC}[?1006l${ESC}[?1000l` : ''}${ESC}[2J${ESC}[H${ESC}[0m`);
   }

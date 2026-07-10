@@ -10,7 +10,7 @@ import { Header, Spinner, ErrorView, KeyHints } from '../ui.js';
 import { truncate } from '../../lib/text.js';
 
 export function MangaScreen({ params }) {
-  const { sourceId, manga: initial } = params;
+  const { sourceId, manga: initial, notice, resumeUnavailableFor = null } = params;
   const ui = useUI();
   const source = getSource(sourceId);
 
@@ -20,6 +20,15 @@ export function MangaScreen({ params }) {
   const [error, setError] = useState(null);
   const [readSet, setReadSet] = useState(null); // chapter ids read on MangaDex
   const progress = getProgress(initial.key);
+  const availableProgress = progress && chapters.some((chapter) => chapter.id === progress.chapterId)
+    ? progress
+    : null;
+  // Recovery suppression belongs only to the stale progress entry that opened
+  // this route. Once the user reads a valid chapter and comes back, its new
+  // progress immediately restores Resume and removes the obsolete warning.
+  const recoveryPending = resumeUnavailableFor != null
+    && (!progress || progress.chapterId === resumeUnavailableFor);
+  const resumableProgress = recoveryPending ? null : availableProgress;
 
   useEffect(() => {
     let cancelled = false;
@@ -57,17 +66,17 @@ export function MangaScreen({ params }) {
     ui.openReader({ sourceId, manga, chapters, chapterIndex: index, startPage });
 
   const resume = () => {
-    if (!progress) return;
-    const idx = chapters.findIndex((c) => c.id === progress.chapterId);
-    if (idx >= 0) openAt(idx, progress.page || 0);
+    if (!resumableProgress) return;
+    const idx = chapters.findIndex((c) => c.id === resumableProgress.chapterId);
+    if (idx >= 0) openAt(idx, resumableProgress.page || 0);
   };
 
   useInput((input) => {
-    if (input === 'r' && progress && chapters.length) resume();
+    if (input === 'r' && resumableProgress && chapters.length) resume();
   });
 
   const cols = ui.dimensions.cols || 80;
-  const resumeChapterId = progress?.chapterId;
+  const resumeChapterId = resumableProgress?.chapterId;
 
   return (
     <Box flexDirection="column">
@@ -75,6 +84,9 @@ export function MangaScreen({ params }) {
         title={truncate(manga.title, cols - 4)}
         subtitle={[manga.authors?.join(', '), manga.status].filter(Boolean).join(' · ')}
       />
+      {notice && (resumeUnavailableFor == null || recoveryPending)
+        ? <Text color="yellow">{notice}</Text>
+        : null}
       {manga.tags?.length ? (
         <Text color="blue">{truncate(manga.tags.join(' · '), cols - 4)}</Text>
       ) : null}
@@ -85,9 +97,9 @@ export function MangaScreen({ params }) {
           </Text>
         </Box>
       ) : null}
-      {progress ? (
+      {resumableProgress ? (
         <Box marginTop={1}>
-          <Text color="green">{`▶ Resume Ch.${progress.chapterNumber ?? '?'} p.${(progress.page || 0) + 1}  (press r)`}</Text>
+          <Text color="green">{`▶ Resume Ch.${resumableProgress.chapterNumber ?? '?'} p.${(resumableProgress.page || 0) + 1}  (press r)`}</Text>
         </Box>
       ) : null}
 
@@ -119,7 +131,7 @@ export function MangaScreen({ params }) {
           />
         ) : null}
       </Box>
-      <KeyHints hints={[['↑↓', 'move'], ['enter', 'read'], ...(progress ? [['r', 'resume']] : []), ['esc', 'back']]} />
+      <KeyHints hints={[['↑↓', 'move'], ['enter', 'read'], ...(resumableProgress ? [['r', 'resume']] : []), ['esc', 'back']]} />
     </Box>
   );
 }

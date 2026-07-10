@@ -41,19 +41,45 @@ async function authHeader({ auth, signal }) {
   return {};
 }
 
+// A public request may carry an optional account token. If MangaDex rejects it,
+// try the rotated token once, then shed Authorization entirely so a dead login
+// cannot take anonymous browsing down with it. Auth-required calls never shed
+// the header and preserve the original 401 when refresh cannot recover.
+async function retryUnauthorized(run, requestHeaders, originalError, { auth, signal }) {
+  if (originalError.statusCode !== 401 || !requestHeaders.Authorization) throw originalError;
+
+  let token = null;
+  try {
+    token = await getAccessToken({ signal, force: true });
+  } catch {
+    if (auth) throw originalError;
+  }
+
+  if (token) {
+    try {
+      return await run({ ...requestHeaders, Authorization: `Bearer ${token}` });
+    } catch (refreshedError) {
+      if (auth || refreshedError.statusCode !== 401) throw refreshedError;
+      // The refresh endpoint can succeed while the API still rejects that
+      // account token. Public browsing remains valid, so shed it once rather
+      // than letting a broken session take anonymous access down too.
+    }
+  }
+  if (auth) throw originalError;
+
+  const anonymousHeaders = { ...requestHeaders };
+  delete anonymousHeaders.Authorization;
+  return run(anonymousHeaders);
+}
+
 export async function mdGet(path, params, { signal, auth = false } = {}) {
   const url = `${MANGADEX.api}${path}${params ? `?${qs(params)}` : ''}`;
   const h = { ...headers, ...(await authHeader({ auth, signal })) };
+  const request = (requestHeaders) => fetchJson(url, { headers: requestHeaders, signal });
   try {
-    return await fetchJson(url, { headers: h, signal });
+    return await request(h);
   } catch (err) {
-    // Token revoked server-side mid-session: force a refresh and retry once.
-    if (auth && err.statusCode === 401 && isLoggedIn()) {
-      const token = await getAccessToken({ signal, force: true });
-      if (!token) throw err; // session died during the forced refresh
-      return fetchJson(url, { headers: { ...h, Authorization: `Bearer ${token}` }, signal });
-    }
-    throw err;
+    return retryUnauthorized(request, h, err, { auth, signal });
   }
 }
 
@@ -75,11 +101,6 @@ export async function mdSend(method, path, body, { signal, auth = true } = {}) {
   try {
     return await send(base);
   } catch (err) {
-    if (auth && err.statusCode === 401 && isLoggedIn()) {
-      const token = await getAccessToken({ signal, force: true });
-      if (!token) throw err; // session died during the forced refresh
-      return send({ ...base, Authorization: `Bearer ${token}` });
-    }
-    throw err;
+    return retryUnauthorized(send, base, err, { auth, signal });
   }
 }

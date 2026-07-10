@@ -42,7 +42,8 @@ export function setConfig(patch) {
 }
 
 // ---- Reading progress --------------------------------------------------
-// Shape: { [mangaKey]: { source, mangaId, mangaTitle, chapterId, chapterNumber, page, updatedAt } }
+// Shape: { [mangaKey]: { source, mangaId, mangaTitle, chapterId,
+//   chapterNumber, chapterVolume, page, updatedAt } }
 let progress = null;
 function loadProgress() {
   if (!progress) progress = readJson(paths.progressFile, {});

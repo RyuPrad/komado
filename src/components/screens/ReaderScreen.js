@@ -28,6 +28,7 @@ export function ReaderScreen({ params }) {
   const chapter = chapters[chapterIndex];
   const viewportRows = Math.max(3, rows - 3); // status line + help line + margin
   const renderCache = useRef(new Map());
+  const rendersInFlight = useRef(new Map());
   // Which chapter the loaded `pages` belong to. On a chapter change there's a
   // one-commit window where `chapter` is already the new one but `pages` (and
   // `status`) are still the old chapter's - anything pairing chapter.id with
@@ -40,6 +41,9 @@ export function ReaderScreen({ params }) {
     let cancelled = false;
     const ctrl = new AbortController();
     const chapterId = chapter.id;
+    // Invalidate the descriptor/chapter pairing synchronously before any later
+    // effect from this commit can render the old `pages` under the new chapter.
+    pagesFor.current = null;
     setStatus('loading');
     setPages(null);
     setError(null);
@@ -69,21 +73,32 @@ export function ReaderScreen({ params }) {
   // Load + render one page into the cache, returning its lines.
   const renderPage = async (idx, signal) => {
     const key = cacheKeyFor(idx);
+    const descriptor = pages[idx];
     if (renderCache.current.has(key)) return renderCache.current.get(key);
-    const buf = await source.loadPageBuffer(pages[idx], { signal });
-    let renderCols = cols;
-    if (fitMode) {
-      const { width, height } = await imageSize(buf);
-      // Pick a width so the whole page fits within the viewport height.
-      renderCols = Math.max(8, Math.min(cols, Math.floor(viewportRows * 2 * (width / height))));
-    }
-    const out = await renderInline(buf, { cols: renderCols, backend });
-    const cache = renderCache.current;
-    cache.set(key, out);
-    // Rendered pages are big (one ANSI string per row) - keep a rolling window,
-    // not the whole chapter, or a long session grows by megabytes per page.
-    while (cache.size > 16) cache.delete(cache.keys().next().value);
-    return out;
+    if (rendersInFlight.current.has(key)) return rendersInFlight.current.get(key);
+
+    const pending = (async () => {
+      const buf = await source.loadPageBuffer(descriptor, { signal });
+      let renderCols = cols;
+      if (fitMode) {
+        const { width, height } = await imageSize(buf);
+        // Pick a width so the whole page fits within the viewport height.
+        renderCols = Math.max(8, Math.min(cols, Math.floor(viewportRows * 2 * (width / height))));
+      }
+      const out = await renderInline(buf, { cols: renderCols, backend });
+      const cache = renderCache.current;
+      cache.set(key, out);
+      // Rendered pages are big (one ANSI string per row) - keep a rolling window,
+      // not the whole chapter, or a long session grows by megabytes per page.
+      while (cache.size > 16) cache.delete(cache.keys().next().value);
+      return out;
+    })();
+    rendersInFlight.current.set(key, pending);
+    const clearPending = () => {
+      if (rendersInFlight.current.get(key) === pending) rendersInFlight.current.delete(key);
+    };
+    pending.then(clearPending, clearPending);
+    return pending;
   };
 
   // Background prefetch (own controller - survives page turns, aborts on unmount).
@@ -93,7 +108,11 @@ export function ReaderScreen({ params }) {
     prefetchers.current.clear();
   }, []);
   const prefetch = (idx) => {
-    if (!pages?.[idx] || renderCache.current.has(cacheKeyFor(idx))) return;
+    const key = cacheKeyFor(idx);
+    if (pagesFor.current !== chapter.id
+        || !pages?.[idx]
+        || renderCache.current.has(key)
+        || rendersInFlight.current.has(key)) return;
     const c = new AbortController();
     prefetchers.current.add(c);
     renderPage(idx, c.signal).catch(() => {}).finally(() => prefetchers.current.delete(c));
@@ -101,7 +120,7 @@ export function ReaderScreen({ params }) {
 
   // --- Render current page (no spinner flicker on cache hits) + prefetch next ---
   useEffect(() => {
-    if (!pages || !pages[pageIndex]) return;
+    if (!pages || !pages[pageIndex] || pagesFor.current !== chapter.id) return;
     let cancelled = false;
     const ctrl = new AbortController();
 
@@ -146,6 +165,7 @@ export function ReaderScreen({ params }) {
       mangaTitle: manga.title,
       chapterId: chapter.id,
       chapterNumber: chapter.number,
+      chapterVolume: chapter.volume,
       page: pageIndex,
     });
     // Reaching the last page = finished the chapter → push a read-marker to

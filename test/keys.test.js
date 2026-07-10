@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { tokenizeKeys } from '../src/lib/keys.js';
+import { describe, it, expect, vi } from 'vitest';
+import { createKeyTokenizer, tokenizeKeys } from '../src/lib/keys.js';
 
 const ESC = '\x1b';
 
@@ -55,5 +55,70 @@ describe('tokenizeKeys', () => {
   it('splits a fast wheel burst mixed with keys', () => {
     expect(tokenizeKeys(`${ESC}[<65;1;1M${ESC}[<65;1;1Mj${ESC}[B`))
       .toEqual([`${ESC}[<65;1;1M`, `${ESC}[<65;1;1M`, 'j', `${ESC}[B`]);
+  });
+});
+
+describe('createKeyTokenizer', () => {
+  it('joins CSI, SS3, and SGR mouse reports split across data events', () => {
+    const seen = [];
+    const decoder = createKeyTokenizer((tokens) => seen.push(...tokens));
+
+    decoder.push(ESC);
+    decoder.push('[');
+    decoder.push('1;5');
+    decoder.push('C');
+    decoder.push(`${ESC}O`);
+    decoder.push('A');
+    decoder.push(`${ESC}[<65;40`);
+    decoder.push(';12M');
+
+    expect(seen).toEqual([`${ESC}[1;5C`, `${ESC}OA`, `${ESC}[<65;40;12M`]);
+    decoder.close();
+  });
+
+  it('keeps ordering when fragments and batched keys are mixed', () => {
+    const seen = [];
+    const decoder = createKeyTokenizer((tokens) => seen.push(...tokens));
+
+    decoder.push(`j${ESC}[`);
+    decoder.push(`Bkk${ESC}`);
+    decoder.push('[A');
+
+    expect(seen).toEqual(['j', `${ESC}[B`, 'k', 'k', `${ESC}[A`]);
+    decoder.close();
+  });
+
+  it('emits a standalone Escape only after the ambiguity timeout', () => {
+    vi.useFakeTimers();
+    try {
+      const seen = [];
+      const decoder = createKeyTokenizer((tokens) => seen.push(...tokens), { escapeDelay: 40 });
+      decoder.push(ESC);
+
+      vi.advanceTimersByTime(39);
+      expect(seen).toEqual([]);
+      vi.advanceTimersByTime(1);
+      expect(seen).toEqual([ESC]);
+      decoder.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('cancels the Escape timeout when the next event completes a sequence', () => {
+    vi.useFakeTimers();
+    try {
+      const seen = [];
+      const decoder = createKeyTokenizer((tokens) => seen.push(...tokens), { escapeDelay: 40 });
+      decoder.push(ESC);
+      vi.advanceTimersByTime(20);
+      decoder.push('[B');
+      vi.advanceTimersByTime(40);
+
+      expect(seen).toEqual([`${ESC}[B`]);
+      decoder.close();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

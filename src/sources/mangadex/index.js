@@ -49,13 +49,16 @@ export async function getManga(mangaId, { signal } = {}) {
 export async function listChapters(mangaId, { offset = 0, limit = 96, language, signal } = {}) {
   const cfg = getConfig();
   const lang = language || cfg.language;
-  const key = `chapters:${mangaId}:${lang}:${offset}:${limit}`;
+  // Ratings are a set semantically. Normalize them so a changed set invalidates
+  // the feed cache while a harmless ordering change keeps sharing the same entry.
+  const ratings = [...new Set(cfg.contentRating || [])].sort();
+  const key = `chapters:${mangaId}:${lang}:${offset}:${limit}:${ratings.join(',')}`;
   const res = await cache.wrap(key, () =>
     mdGet(`/manga/${mangaId}/feed`, {
       limit,
       offset,
       translatedLanguage: lang ? [lang] : undefined,
-      contentRating: cfg.contentRating,
+      contentRating: ratings,
       includes: ['scanlation_group'],
       order: { volume: 'asc', chapter: 'asc' },
     }, { signal }),

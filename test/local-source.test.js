@@ -29,6 +29,13 @@ beforeAll(async () => {
   fs.mkdirSync(folderCh, { recursive: true });
   for (const n of PAGES) fs.writeFileSync(path.join(folderCh, n), await png({ r: 220, g: 220, b: 220 }));
 
+  // Multi-chapter fixture used to prove ids do not change when sorting changes.
+  for (const name of ['Chapter 2', 'Chapter 10']) {
+    const dir = path.join(fixtures, 'Stable Manga', name);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, '1.png'), await png({ r: 80, g: 90, b: 100 }));
+  }
+
   // standalone .cbz
   const zip = new AdmZip();
   for (const n of PAGES) zip.addFile(n, await png({ r: 100, g: 150, b: 200 }));
@@ -77,5 +84,21 @@ describe('local source', () => {
     const pages = await local.getPages(chapter.id);
     expect(pages.map((p) => p.entry)).toEqual(PAGES);
     expect((await local.loadPageBuffer(pages[0])).length).toBeGreaterThan(0);
+  });
+
+  it('keeps chapter ids stable when a new folder changes natural-sort positions', async () => {
+    const manga = (await local.search('Stable Manga')).data[0];
+    const before = (await local.listChapters(manga.id)).data;
+    const idsByTitle = new Map(before.map((ch) => [ch.title, ch.id]));
+
+    const inserted = path.join(fixtures, 'Stable Manga', 'Chapter 1');
+    fs.mkdirSync(inserted, { recursive: true });
+    fs.writeFileSync(path.join(inserted, '1.png'), await png({ r: 10, g: 20, b: 30 }));
+    local.scan();
+    const after = (await local.listChapters(manga.id)).data;
+
+    expect(after.find((ch) => ch.title === 'Chapter 2').id).toBe(idsByTitle.get('Chapter 2'));
+    expect(after.find((ch) => ch.title === 'Chapter 10').id).toBe(idsByTitle.get('Chapter 10'));
+    expect((await local.getPages(idsByTitle.get('Chapter 2')))).toHaveLength(1);
   });
 });

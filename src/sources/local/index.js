@@ -25,6 +25,10 @@ function listDir(dir) {
 const hasImages = (dir) => listDir(dir).some((d) => d.isFile() && IMAGE_RE.test(d.name));
 const cleanName = (name) => name.replace(/\.(cbz|zip|cbr|rar)$/i, '');
 const expandHome = (p) => (p.startsWith('~') ? path.join(os.homedir(), p.slice(1)) : p);
+const chapterLocation = (chapter) => chapter.kind === 'dir' ? chapter.dir : chapter.file;
+const localChapterId = (mangaId, chapter) => (
+  `${mangaId}#path:${Buffer.from(chapterLocation(chapter)).toString('base64url')}`
+);
 
 // A directory is a manga. Its chapters are: image subfolders, then archive
 // files; or - if neither - the loose images in the folder become one chapter.
@@ -115,7 +119,10 @@ export async function listChapters(mangaId, { offset = 0, limit = 100_000 } = {}
   const data = built.chapters.map((ch, i) =>
     makeChapter({
       source: id,
-      id: `${mangaId}#${i}`,
+      // Paths are opaque but stable across sorting changes. Positional ids made
+      // an inserted/renamed folder silently redirect saved progress to whatever
+      // chapter inherited its old array index.
+      id: localChapterId(mangaId, ch),
       mangaKey,
       number: built.chapters.length > 1 ? String(i + 1) : null,
       title: cleanName(ch.name),
@@ -130,12 +137,21 @@ export async function listChapters(mangaId, { offset = 0, limit = 100_000 } = {}
 
 export async function getPages(chapterId) {
   ensureModel();
+  const marker = '#path:';
+  const pathMarker = chapterId.lastIndexOf(marker);
   const hash = chapterId.lastIndexOf('#');
-  const mangaId = chapterId.slice(0, hash);
-  const chIndex = Number(chapterId.slice(hash + 1));
+  const mangaId = chapterId.slice(0, pathMarker >= 0 ? pathMarker : hash);
   const built = model.get(mangaId);
   if (!built) throw new NotFoundError(`Local manga not found: ${mangaId}`);
-  const ch = built.chapters[chIndex];
+  // Accept legacy `mangaId#index` ids for an already-open v0.1.6 reader, but
+  // listChapters only emits stable path ids. Old saved positional progress will
+  // therefore enter Continue Reading's explicit recovery flow once.
+  const ch = pathMarker >= 0
+    ? built.chapters.find((candidate) => (
+      chapterLocation(candidate)
+        === Buffer.from(chapterId.slice(pathMarker + marker.length), 'base64url').toString()
+    ))
+    : built.chapters[Number(chapterId.slice(hash + 1))];
   if (!ch) throw new NotFoundError(`Chapter not found: ${chapterId}`);
 
   if (ch.kind === 'dir') {
