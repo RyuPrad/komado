@@ -233,4 +233,4 @@ where available.
 
 ## License
 
-MIT
+[MIT](LICENSE)
