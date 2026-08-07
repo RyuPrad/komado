@@ -53,26 +53,30 @@ Then just type **`komado`**. Re-run that same command any time to update. It nee
 launcher in `~/.local/bin` (override via `KOMADO_APP_DIR` / `KOMADO_BIN_DIR`).
 
 **Windows** - one line installs Node.js for you (via `winget`) if it's missing,
-then komado, leaving a native `komado` command on your `PATH`. Works from **both
-CMD and PowerShell**, and ignores the execution policy either way:
+then komado, leaving a native `komado` command on your `PATH`. It works from
+**both CMD and PowerShell**, including machines where PowerShell script execution
+is disabled. The temporary `Bypass` applies only to the installer process; it does
+**not** change your system or user execution policy:
 
 ```
 powershell -NoProfile -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/RyuPrad/komado/main/install.ps1 | iex"
 ```
 
-Prefer the native syntax? In **PowerShell**:
+If your PowerShell policy already allows scripts, the shorter native syntax also
+works:
 
 ```powershell
 irm https://raw.githubusercontent.com/RyuPrad/komado/main/install.ps1 | iex
 ```
 
-Already have **Node ≥ 20**? `npm i -g komado` works from either shell - CMD runs
-npm's `.cmd` shim directly, and PowerShell does too if your execution policy
-allows scripts.
+Already have **Node ≥ 20**? The installer is still recommended because npm creates
+PowerShell `.ps1` command shims that Restricted-policy machines refuse to run. If
+you install manually, use `npm.cmd i -g komado` and launch with `komado.cmd` from
+PowerShell. CMD can use the normal `npm i -g komado` / `komado` commands.
 
 > Note: the short `irm … | iex` form is PowerShell-only - in **CMD** it prints
 > `'irm' is not recognized`. Use the longer one-liner above (which works in both),
-> or run `npm i -g komado` directly.
+> or run the installer from PowerShell.
 
 Don't use the `curl … | bash` line on Windows - under **Git Bash** or **WSL** it
 installs a launcher that only runs inside that shell, never from CMD/PowerShell.

@@ -3,16 +3,16 @@
 #   irm https://raw.githubusercontent.com/RyuPrad/komado/main/install.ps1 | iex
 #
 # Ensures Node.js >= 20 is present (installs the LTS via winget if not), then
-# installs komado globally with npm, which drops a native `komado` command on your
-# PATH (usable from both PowerShell and CMD). Safe to re-run any time to update.
+# installs komado globally with npm, then keeps the native `komado.cmd` launcher and
+# removes npm's PowerShell shim. Safe to re-run any time to update.
 #
 # Why npm and not the curl|bash installer? That one writes a *bash* launcher on the
 # Unix PATH (Git Bash / WSL) which CMD and PowerShell can't see. npm installs a real
 # komado.cmd on the Windows PATH, so `komado` just works.
 #
-# Works even under PowerShell's default (Restricted) execution policy: it calls npm
-# via npm.cmd (a batch file, not policy-gated) instead of bare `npm`, which PS would
-# otherwise resolve to npm.ps1 and refuse to load.
+# Works even under PowerShell's Restricted execution policy: it calls npm via
+# npm.cmd (a batch file, not policy-gated) and removes npm's generated komado.ps1,
+# which PowerShell would otherwise prefer over komado.cmd and refuse to load.
 
 function Info($m) { Write-Host "> $m" -ForegroundColor Cyan }
 function Warn($m) { Write-Host "! $m" -ForegroundColor Yellow }
@@ -31,6 +31,15 @@ function Sync-Path {
 function Get-NodeMajor {
   if (-not (Have node)) { return 0 }
   try { return [int](node -p "process.versions.node.split('.')[0]" 2>$null) } catch { return 0 }
+}
+
+function Get-NpmMajor($npm) {
+  try {
+    $version = (& $npm --version 2>$null | Select-Object -Last 1).Trim()
+    return [int]($version.Split('.')[0])
+  } catch {
+    return 0
+  }
 }
 
 $nodeMajor = Get-NodeMajor
@@ -64,22 +73,65 @@ if (-not $npm) {
   return
 }
 
-Info "Installing komado globally (npm i -g komado) ..."
-& $npm install -g komado
+$npmMajor = Get-NpmMajor $npm
+if ($npmMajor -ge 11) {
+  # npm 11+ blocks dependency install scripts unless explicitly approved. sharp's
+  # install/check script validates its native image backend, so approve only sharp
+  # for this one install rather than weakening the user's npm configuration.
+  Info "Installing komado globally (npm i -g --allow-scripts=sharp komado) ..."
+  & $npm install -g --allow-scripts=sharp komado
+} else {
+  Info "Installing komado globally (npm i -g komado) ..."
+  & $npm install -g komado
+}
 if ($LASTEXITCODE -ne 0) {
   Fail "npm install failed - see the npm output above."
   return
 }
 
-# Trust presence, not just exit codes: confirm `komado` actually landed on PATH
-# before claiming success. Catches the "npm global bin not on PATH yet" case too.
+# npm creates both komado.cmd and komado.ps1 on Windows. Under Restricted policy,
+# PowerShell resolves bare `komado` to the .ps1 shim first and rejects it before the
+# working .cmd shim can run. Remove only npm's generated PowerShell shim; this keeps
+# the launch command native to both PowerShell and CMD without changing policy.
+$npmPrefix = (& $npm prefix -g 2>$null | Select-Object -Last 1).Trim()
+if (-not $npmPrefix) {
+  Fail "npm installed komado, but its global prefix could not be determined."
+  return
+}
+
+$cmdShim = Join-Path $npmPrefix 'komado.cmd'
+$psShim  = Join-Path $npmPrefix 'komado.ps1'
+if (-not (Test-Path -LiteralPath $cmdShim -PathType Leaf)) {
+  Fail "npm installed komado, but the Windows launcher was not found at $cmdShim"
+  return
+}
+
+if (Test-Path -LiteralPath $psShim -PathType Leaf) {
+  try {
+    Remove-Item -LiteralPath $psShim -Force -ErrorAction Stop
+  } catch {
+    Fail "komado was installed, but PowerShell's generated shim could not be removed: $psShim"
+    Write-Host "  You can still launch it explicitly with:  komado.cmd" -ForegroundColor Yellow
+    return
+  }
+}
+
+# Trust presence and execution, not just npm's exit code. This catches a missing
+# global PATH and native dependency failures before we claim the install succeeded.
 Sync-Path
-if (-not (Have komado)) {
+if (-not (Have komado.cmd)) {
   Write-Host ""
-  Fail "npm finished, but 'komado' isn't on your PATH."
+  Fail "npm finished, but 'komado.cmd' isn't on your PATH."
   Write-Host "  This usually means npm's global bin just needs a PATH refresh:" -ForegroundColor Yellow
   Write-Host "  open a NEW terminal and run 'komado'." -ForegroundColor Yellow
-  Write-Host "  (If it's still missing, npm's global prefix is: $(& $npm config get prefix))" -ForegroundColor DarkGray
+  Write-Host "  (npm's global prefix is: $npmPrefix)" -ForegroundColor DarkGray
+  return
+}
+
+& $cmdShim --version *> $null
+if ($LASTEXITCODE -ne 0) {
+  Fail "komado installed, but its launcher could not start successfully."
+  Write-Host "  Try running 'komado.cmd --version' to see the underlying error." -ForegroundColor Yellow
   return
 }
 
@@ -89,4 +141,5 @@ if (-not (Have chafa)) {
 
 Write-Host ""
 Write-Host "komado installed. Launch it by typing:  komado" -ForegroundColor Green
+Write-Host "PowerShell execution policy was not changed." -ForegroundColor DarkGray
 Write-Host "(If 'komado' isn't found, open a new terminal so PATH refreshes.)" -ForegroundColor DarkGray
