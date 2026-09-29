@@ -61,6 +61,12 @@ describe('prepareImage - width mode (the scrolling path)', () => {
     expect(inline.scroll).toBe(cached.scroll);
     expect(await dims(inline.buffer)).toEqual(await dims(cached.buffer));
   });
+
+  it('includes the partial final cell of a short width-mode page', async () => {
+    const out = await prepareImage(await page(800, 105), { mode: 'width', ...VIEW });
+    expect(await dims(out.buffer)).toEqual({ width: 800, height: 105 });
+    expect(out.imageRows).toBe(6);
+  });
 });
 
 describe('prepareImage - fit mode', () => {
@@ -75,5 +81,44 @@ describe('prepareImage - fit mode', () => {
     const d = await dims(out.buffer);
     expect(d.width).toBeLessThanOrEqual(800);
     expect(d.height).toBeLessThanOrEqual(460);
+  });
+
+  it('does not round the last occupied cell down before erasing below', async () => {
+    const out = await prepareImage(await page(800, 105), { mode: 'fit', ...VIEW });
+    expect(await dims(out.buffer)).toEqual({ width: 800, height: 105 });
+    expect(out.imageRows).toBe(6);
+  });
+});
+
+describe('EXIF orientation', () => {
+  it('orients the source before width and fit sizing', async () => {
+    const raw = await sharp(await page(40, 20)).jpeg().withMetadata({ orientation: 6 }).toBuffer();
+    const scaled = await scalePage(raw, { cols: 20, cellW: 1 });
+    expect({ width: scaled.width, height: scaled.height }).toEqual({ width: 20, height: 40 });
+    expect(await dims(scaled.buffer)).toEqual({ width: 20, height: 40 });
+    const fit = await prepareImage(raw, { mode: 'fit', cols: 20, rows: 20, cellW: 1, cellH: 1 });
+    expect(await dims(fit.buffer)).toEqual({ width: 10, height: 20 });
+  });
+
+  it('honors mirrored EXIF orientation in width and fit output', async () => {
+    const pixels = Buffer.alloc(40 * 20 * 3);
+    for (let y = 0; y < 20; y += 1) {
+      for (let x = 0; x < 40; x += 1) {
+        const i = (y * 40 + x) * 3;
+        pixels[i] = x < 20 ? 240 : 10;
+        pixels[i + 2] = x < 20 ? 10 : 240;
+      }
+    }
+    const raw = await sharp(pixels, { raw: { width: 40, height: 20, channels: 3 } })
+      .jpeg().withMetadata({ orientation: 2 }).toBuffer();
+    const scaled = await scalePage(raw, { cols: 40, cellW: 1 });
+    const fit = await prepareImage(raw, { mode: 'fit', cols: 40, rows: 20, cellW: 1, cellH: 1 });
+    for (const out of [scaled, fit]) {
+      const normalized = await sharp(out.buffer).raw().toBuffer();
+      expect(normalized[0]).toBeLessThan(30); // blue right half becomes the left half
+      expect(normalized[2]).toBeGreaterThan(220);
+      expect(normalized[39 * 3]).toBeGreaterThan(220);
+      expect(normalized[39 * 3 + 2]).toBeLessThan(30);
+    }
   });
 });

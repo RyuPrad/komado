@@ -5,13 +5,17 @@ const mocks = vi.hoisted(() => ({
   mdGet: vi.fn(),
   mdSend: vi.fn(),
   loggedIn: true,
+  generation: 0,
   config: { contentRating: ['safe', 'suggestive'], syncProgress: true },
 }));
 vi.mock('../src/sources/mangadex/client.js', () => ({
   mdGet: (...a) => mocks.mdGet(...a),
   mdSend: (...a) => mocks.mdSend(...a),
 }));
-vi.mock('../src/sources/mangadex/auth.js', () => ({ isLoggedIn: () => mocks.loggedIn }));
+vi.mock('../src/sources/mangadex/auth.js', () => ({
+  isLoggedIn: () => mocks.loggedIn,
+  getSessionGeneration: () => mocks.generation,
+}));
 vi.mock('../src/state/store.js', () => ({ getConfig: () => mocks.config }));
 
 const md = await import('../src/sources/mangadex/index.js');
@@ -26,6 +30,7 @@ beforeEach(() => {
   mocks.mdGet.mockReset();
   mocks.mdSend.mockReset();
   mocks.loggedIn = true;
+  mocks.generation += 1;
   mocks.config = { contentRating: ['safe', 'suggestive'], syncProgress: true };
 });
 
@@ -76,5 +81,33 @@ describe('mangadex authed source methods', () => {
     mocks.loggedIn = false;
     await md.syncChapterRead('m1', 'anon-ch');
     expect(mocks.mdSend).not.toHaveBeenCalled();
+  });
+
+  it('syncs the same chapter again after switching accounts', async () => {
+    mocks.mdSend.mockResolvedValue({ result: 'ok' });
+    await md.syncChapterRead('m1', 'account-switch-ch');
+    mocks.loggedIn = false;
+    mocks.generation += 1;
+    await md.syncChapterRead('m1', 'account-switch-ch');
+    mocks.loggedIn = true;
+    mocks.generation += 1;
+    await md.syncChapterRead('m1', 'account-switch-ch');
+    await md.syncChapterRead('m1', 'account-switch-ch');
+    expect(mocks.mdSend).toHaveBeenCalledTimes(2);
+    expect(mocks.mdSend.mock.calls[0][3].session).not.toBe(mocks.mdSend.mock.calls[1][3].session);
+  });
+
+  it('does not let an old sync failure remove a new account dedupe entry', async () => {
+    let rejectOld;
+    mocks.mdSend
+      .mockImplementationOnce(() => new Promise((_, reject) => { rejectOld = reject; }))
+      .mockResolvedValue({ result: 'ok' });
+    const old = md.syncChapterRead('m1', 'pending-switch-ch');
+    mocks.generation += 1;
+    await md.syncChapterRead('m1', 'pending-switch-ch');
+    rejectOld(new Error('old account failed'));
+    await old;
+    await md.syncChapterRead('m1', 'pending-switch-ch');
+    expect(mocks.mdSend).toHaveBeenCalledTimes(2);
   });
 });

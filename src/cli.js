@@ -100,7 +100,7 @@ async function renderCmd(target, rest) {
     const { width: iw, height: ih } = await imageSize(buf);
     const rows = Math.max(1, Math.round(((ih / iw) * width) / 2));
     const tmp = path.join(os.tmpdir(), `komado-render-${Date.now()}.png`);
-    await writeFile(tmp, await sharp(buf).png().toBuffer());
+    await writeFile(tmp, await sharp(buf).rotate().png().toBuffer());
     spawnChafaToTerminal(tmp, { cols: width, rows });
     await unlink(tmp).catch(() => {});
   } else {
@@ -140,6 +140,8 @@ async function runApp() {
   const { render } = await import('ink');
   const { App } = await import('./app.js');
   const { runViewer } = await import('./sixel-reader.js'); // pre-import (no mid-loop gap)
+  const { beginRequestSession, endRequestSession } = await import('./lib/fetchWithBackoff.js');
+  const requestSession = beginRequestSession();
 
   // Alternate screen + hidden cursor for a clean, scrollback-free experience.
   const restore = () => process.stdout.write('\x1b[?25h\x1b[?1049l');
@@ -181,6 +183,7 @@ async function runApp() {
       }
     }
   } finally {
+    endRequestSession(requestSession);
     restore();
     process.removeListener('exit', restore);
   }

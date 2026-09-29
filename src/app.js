@@ -3,6 +3,7 @@ import { Box, useApp, useInput } from 'ink';
 import { UIContext } from './ui-context.js';
 import { useStdoutDimensions } from './hooks/useStdoutDimensions.js';
 import { flushProgress } from './state/store.js';
+import { getInkViewport } from './lib/layout.js';
 import { HomeScreen } from './components/screens/HomeScreen.js';
 import { SearchScreen } from './components/screens/SearchScreen.js';
 import { MangaScreen } from './components/screens/MangaScreen.js';
@@ -26,6 +27,7 @@ const SCREENS = {
 export function App({ caps = {}, onViewer, initialRoute = null }) {
   const { exit } = useApp();
   const dimensions = useStdoutDimensions();
+  const viewport = getInkViewport(dimensions);
   const [stack, setStack] = useState(
     initialRoute ? [{ name: 'home', params: {} }, initialRoute] : [{ name: 'home', params: {} }],
   );
@@ -65,7 +67,7 @@ export function App({ caps = {}, onViewer, initialRoute = null }) {
   // the depth so navigating back rebuilds the previous screen.
   return (
     <UIContext.Provider value={ctx}>
-      <Box flexDirection="column" paddingX={1}>
+      <Box flexDirection="column" paddingX={viewport.paddingX}>
         <Screen key={`${stack.length}:${current.name}`} params={current.params} />
       </Box>
     </UIContext.Provider>

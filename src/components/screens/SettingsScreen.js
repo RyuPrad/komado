@@ -7,8 +7,9 @@ import { scan } from '../../sources/local/index.js';
 import { isLoggedIn, logout } from '../../sources/mangadex/auth.js';
 import { detectCapabilities, RENDERER_CYCLE } from '../../render/detect.js';
 import { List } from '../List.js';
-import { Header, KeyHints } from '../ui.js';
-import { truncate } from '../../lib/text.js';
+import { Header, KeyHints, ResizeHint } from '../ui.js';
+import { displayWidth, truncateWidth, sanitizeTerminalText } from '../../lib/text.js';
+import { getInkViewport, isInkViewportUsable } from '../../lib/layout.js';
 import { performUninstall, uninstallTargets, displayPath, formatUninstallSummary } from '../../uninstall.js';
 
 const RATING_PRESETS = [
@@ -22,6 +23,11 @@ const cycle = (list, current) => list[(list.indexOf(current) + 1) % list.length]
 
 export function SettingsScreen() {
   const ui = useUI();
+  const { cols, rows } = getInkViewport(ui.dimensions);
+  const usable = isInkViewportUsable({ cols, rows });
+  const compact = rows < 7;
+  const showPosition = rows >= 4;
+  const listHeight = Math.max(1, rows - (compact ? 2 : 5) - (showPosition ? 1 : 0));
   const caps = detectCapabilities();
   const [cfg, setCfg] = useState(getConfig());
   const [editing, setEditing] = useState(null); // null | 'language' | 'addPath'
@@ -48,7 +54,7 @@ export function SettingsScreen() {
     { id: 'language', kind: 'edit', label: 'Language (MangaDex)', value: cfg.language },
     { id: 'addPath', kind: 'action', label: 'Add library path…', value: '' },
     ...cfg.localLibraryPaths.map((p, i) => ({
-      id: `path:${i}`, kind: 'path', pathIndex: i, label: `Library: ${truncate(p, 48)}`, value: 'd to remove',
+      id: `path:${i}`, kind: 'path', pathIndex: i, label: `Library: ${p}`, value: 'd to remove',
     })),
     { id: 'uninstall', kind: 'danger', label: 'Uninstall komado…', value: 'removes the app + all data' },
   ];
@@ -115,18 +121,22 @@ export function SettingsScreen() {
       }
       return;
     }
+    if (!usable) return;
     if (input === 'd' && highlighted?.kind === 'path') {
       save({ localLibraryPaths: cfg.localLibraryPaths.filter((_, i) => i !== highlighted.pathIndex) });
       scan();
     }
   });
 
+  if (!usable) return <ResizeHint />;
+
   return (
     <Box flexDirection="column">
-      <Header
+      {editing && compact && rows === 3 ? null : <Header
+        compact={compact}
         title="Settings"
         subtitle={`chafa: ${caps.chafa ? caps.chafaVersion : 'not installed'} · backend: ${caps.chafa ? 'chafa-symbols' : 'half-block'}`}
-      />
+      />}
 
       {editing === 'uninstall' ? (
         <Box flexDirection="column">
@@ -144,37 +154,43 @@ export function SettingsScreen() {
             <Text>{' to confirm: '}</Text>
             <TextInput value={draft} onChange={setDraft} onSubmit={submitEdit} focus={true} />
           </Box>
-          <KeyHints hints={[['enter', 'confirm'], ['esc', 'cancel']]} />
+          <KeyHints compact={compact} hints={[['enter', 'confirm'], ['esc', 'cancel']]} />
         </Box>
       ) : editing ? (
         <Box flexDirection="column">
-          <Text color="cyanBright">
+          <Text color="cyanBright" wrap="truncate-end">
             {editing === 'addPath' ? 'New library path (folder of manga / CBZ):' : 'Language code (e.g. en, fr, ja):'}
           </Text>
           <Box>
             <Text color="cyanBright">{'› '}</Text>
             <TextInput value={draft} onChange={setDraft} onSubmit={submitEdit} focus={true} />
           </Box>
-          <KeyHints hints={[['enter', 'save'], ['esc', 'cancel']]} />
+          <KeyHints compact={compact} hints={[['enter', 'save'], ['esc', 'cancel']]} />
         </Box>
       ) : (
         <Box flexDirection="column">
           <List
             items={items}
             isActive={true}
-            height={Math.max(6, (ui.dimensions.rows || 24) - 7)}
+            height={listHeight}
+            showPosition={showPosition}
             onSelect={activate}
             onHighlight={(it) => setHighlighted(it)}
-            renderItem={(it, active) => (
-              <Box key={it.id} justifyContent="space-between">
-                <Text inverse={active} color={active ? 'cyanBright' : it.kind === 'danger' ? 'red' : it.kind === 'path' ? 'blue' : undefined}>
-                  {` ${it.label} `}
-                </Text>
-                {it.value ? <Text dimColor>{it.value}</Text> : null}
-              </Box>
-            )}
+            renderItem={(it, active) => {
+              const value = sanitizeTerminalText(it.value);
+              const valueWidth = Math.min(displayWidth(value), Math.floor(cols / 2));
+              const labelWidth = Math.max(1, cols - valueWidth - (value ? 1 : 0));
+              return (
+                <Box key={it.id} justifyContent="space-between">
+                  <Text wrap="truncate-end" inverse={active} color={active ? 'cyanBright' : it.kind === 'danger' ? 'red' : it.kind === 'path' ? 'blue' : undefined}>
+                    {truncateWidth(` ${sanitizeTerminalText(it.label)} `, labelWidth)}
+                  </Text>
+                  {value ? <Text dimColor wrap="truncate-end">{truncateWidth(value, valueWidth)}</Text> : null}
+                </Box>
+              );
+            }}
           />
-          <KeyHints hints={[['↑↓', 'move'], ['enter', 'change'], ['d', 'remove path'], ['esc', 'back']]} />
+          <KeyHints compact={compact} hints={[['↑↓', 'move'], ['enter', 'change'], ['d', 'remove path'], ['esc', 'back']]} />
         </Box>
       )}
     </Box>

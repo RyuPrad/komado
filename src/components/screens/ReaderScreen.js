@@ -6,14 +6,18 @@ import { setProgress, getConfig } from '../../state/store.js';
 import { chapterLabel } from '../../domain/shape.js';
 import { renderInline, imageSize } from '../../render/image.js';
 import { pickInlineBackend, RENDERER_CYCLE } from '../../render/detect.js';
-import { Spinner, ErrorView, KeyHints } from '../ui.js';
-import { truncate } from '../../lib/text.js';
+import { Spinner, ErrorView, KeyHints, ResizeHint } from '../ui.js';
+import { displayWidth, truncateWidth, sanitizeTerminalText } from '../../lib/text.js';
+import { getInkViewport, isInkViewportUsable } from '../../lib/layout.js';
+import { NotFoundError } from '../../lib/AppError.js';
 
 export function ReaderScreen({ params }) {
   const { sourceId, manga, chapters, chapterIndex: startChapter, startPage = 0 } = params;
   const ui = useUI();
   const source = getSource(sourceId);
-  const { cols, rows } = ui.dimensions;
+  const { cols, rows } = getInkViewport(ui.dimensions);
+  const usable = isInkViewportUsable({ cols, rows });
+  const compact = rows < 4;
 
   const [chapterIndex, setChapterIndex] = useState(startChapter);
   const [pages, setPages] = useState(null);
@@ -26,7 +30,7 @@ export function ReaderScreen({ params }) {
   const [rendererPref, setRendererPref] = useState(getConfig().renderer || 'auto');
 
   const chapter = chapters[chapterIndex];
-  const viewportRows = Math.max(3, rows - 3); // status line + help line + margin
+  const viewportRows = Math.max(1, rows - (compact ? 2 : 3)); // header + help + optional gap
   const renderCache = useRef(new Map());
   const rendersInFlight = useRef(new Map());
   // Which chapter the loaded `pages` belong to. On a chapter change there's a
@@ -51,6 +55,7 @@ export function ReaderScreen({ params }) {
       try {
         const pgs = await source.getPages(chapterId, { signal: ctrl.signal });
         if (cancelled) return;
+        if (!pgs.length) throw new NotFoundError('This chapter has no pages.');
         pagesFor.current = chapterId;
         setPages(pgs);
         setPageIndex((p) => Math.max(0, Math.min(p, pgs.length - 1)));
@@ -69,6 +74,7 @@ export function ReaderScreen({ params }) {
 
   const cacheKeyFor = (idx) =>
     `${chapter?.id}:${idx}:${cols}:${viewportRows}:${backend}:${fitMode ? 'fit' : 'scroll'}`;
+  const currentRenderKey = cacheKeyFor(pageIndex);
 
   // Load + render one page into the cache, returning its lines.
   const renderPage = async (idx, signal) => {
@@ -83,9 +89,9 @@ export function ReaderScreen({ params }) {
       if (fitMode) {
         const { width, height } = await imageSize(buf);
         // Pick a width so the whole page fits within the viewport height.
-        renderCols = Math.max(8, Math.min(cols, Math.floor(viewportRows * 2 * (width / height))));
+        renderCols = Math.max(1, Math.min(cols, Math.floor(viewportRows * 2 * (width / height))));
       }
-      const out = await renderInline(buf, { cols: renderCols, backend });
+      const out = await renderInline(buf, { cols: renderCols, backend, maxRows: fitMode ? viewportRows : undefined });
       const cache = renderCache.current;
       cache.set(key, out);
       // Rendered pages are big (one ANSI string per row) - keep a rolling window,
@@ -120,12 +126,12 @@ export function ReaderScreen({ params }) {
 
   // --- Render current page (no spinner flicker on cache hits) + prefetch next ---
   useEffect(() => {
-    if (!pages || !pages[pageIndex] || pagesFor.current !== chapter.id) return;
+    if (!usable || !pages || !pages[pageIndex] || pagesFor.current !== chapter.id) return;
     let cancelled = false;
     const ctrl = new AbortController();
 
     if (renderCache.current.has(cacheKeyFor(pageIndex))) {
-      setRendered(renderCache.current.get(cacheKeyFor(pageIndex)));
+      setRendered({ ...renderCache.current.get(currentRenderKey), key: currentRenderKey });
       setScroll(0);
       setStatus('ready');
     } else {
@@ -133,7 +139,7 @@ export function ReaderScreen({ params }) {
       renderPage(pageIndex, ctrl.signal)
         .then((out) => {
           if (cancelled) return;
-          setRendered(out);
+          setRendered({ ...out, key: currentRenderKey });
           setScroll(0);
           setStatus('ready');
         })
@@ -150,7 +156,7 @@ export function ReaderScreen({ params }) {
       cancelled = true;
       ctrl.abort();
     };
-  }, [pages, pageIndex, cols, viewportRows, backend, fitMode]);
+  }, [pages, currentRenderKey, usable]);
 
   // --- Persist reading progress on every settled page ---
   useEffect(() => {
@@ -158,7 +164,10 @@ export function ReaderScreen({ params }) {
     // still belong to the PREVIOUS chapter: without it, leaving a 1-page chapter
     // (pageIndex 0 === stale pages.length - 1) instantly marked the NEW chapter
     // read on MangaDex before it even loaded.
-    if (status !== 'ready' || !pages || pagesFor.current !== chapter.id) return;
+    // Page changes also have a one-commit window with the old ready status.
+    // Only the output actually committed for this page can advance progress.
+    if (status !== 'ready' || !pages || pagesFor.current !== chapter.id
+        || rendered?.key !== currentRenderKey) return;
     setProgress(manga.key, {
       source: sourceId,
       mangaId: manga.id,
@@ -173,7 +182,7 @@ export function ReaderScreen({ params }) {
     if (pageIndex === pages.length - 1 && source.syncChapterRead) {
       source.syncChapterRead(manga.id, chapter.id);
     }
-  }, [pageIndex, chapter?.id, status]);
+  }, [pageIndex, chapter?.id, status, rendered?.key, currentRenderKey]);
 
   // --- Navigation helpers ---
   const lines = rendered?.lines || [];
@@ -210,12 +219,13 @@ export function ReaderScreen({ params }) {
   };
 
   useInput((input, key) => {
+    if (!usable) return;
     if (key.downArrow || input === 'j') setScroll((s) => Math.min(maxScroll, s + 1));
     else if (key.upArrow || input === 'k') setScroll((s) => Math.max(0, s - 1));
     else if (input === ' ' || key.pageDown) {
       if (scroll >= maxScroll) nextPage();
-      else setScroll((s) => Math.min(maxScroll, s + viewportRows - 1));
-    } else if (key.pageUp) setScroll((s) => Math.max(0, s - (viewportRows - 1)));
+      else setScroll((s) => Math.min(maxScroll, s + Math.max(1, viewportRows - 1)));
+    } else if (key.pageUp) setScroll((s) => Math.max(0, s - Math.max(1, viewportRows - 1)));
     else if (key.rightArrow || input === 'l') nextPage();
     else if (key.leftArrow || input === 'h') prevPage();
     else if (input === 'g') setScroll(0);
@@ -229,15 +239,22 @@ export function ReaderScreen({ params }) {
   // --- Render ---
   const pageLabel = pages ? `${pageIndex + 1}/${pages.length}` : '…';
   const slice = lines.slice(scroll, scroll + viewportRows);
+  const position = `${pageLabel}${fitMode && cols >= displayWidth(pageLabel) + 4 ? ' fit' : ''}`;
+  const chapterText = truncateWidth(sanitizeTerminalText(chapterLabel(chapter)),
+    Math.min(24, Math.max(0, cols - displayWidth(position) - 1)));
+  const rightLabel = truncateWidth(chapterText ? `${chapterText} ${position}` : position, cols);
+  const title = truncateWidth(sanitizeTerminalText(manga.title), Math.max(0, cols - displayWidth(rightLabel) - 1));
+
+  if (!usable) return <ResizeHint />;
 
   return (
     <Box flexDirection="column">
       <Box justifyContent="space-between">
-        <Text color="magentaBright" bold>{truncate(manga.title, Math.max(10, cols - 34))}</Text>
-        <Text>{`${truncate(chapterLabel(chapter), 24)} · ${pageLabel}${fitMode ? ' · fit' : ''}`}</Text>
+        <Text color="magentaBright" bold wrap="truncate-end">{title}</Text>
+        <Text wrap="truncate-end">{rightLabel}</Text>
       </Box>
 
-      <Box height={viewportRows} flexDirection="column">
+      <Box height={viewportRows} flexDirection="column" overflow="hidden">
         {status === 'loading' ? (
           <Spinner label={pages ? `Rendering page ${pageIndex + 1}` : 'Loading chapter'} />
         ) : status === 'error' ? (
@@ -245,6 +262,8 @@ export function ReaderScreen({ params }) {
             <ErrorView error={error} />
             <Text dimColor>Press n / p to skip to another chapter, or Esc to go back.</Text>
           </Box>
+        ) : rendered?.key !== currentRenderKey ? (
+          <Spinner label={`Rendering page ${pageIndex + 1}`} />
         ) : (
           slice.map((ln, i) => (
             <Text key={scroll + i} wrap="truncate-end">{ln}</Text>
@@ -253,6 +272,7 @@ export function ReaderScreen({ params }) {
       </Box>
 
       <KeyHints
+        compact={compact}
         hints={[
           ['←→', 'page'],
           ['↑↓', 'scroll'],

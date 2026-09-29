@@ -1,3 +1,5 @@
+import { awaitWithSignal, throwIfAborted } from './abort.js';
+
 // In-memory cache with TTL, negative caching, and stampede protection -
 // a port of your createCache. `wrap` shares a single in-flight promise per key
 // so concurrent callers (e.g. two screens requesting the same chapter) collapse
@@ -27,23 +29,23 @@ export function createCache({ ttlMs = 60_000, negativeTtlMs = 5_000, max = 500 }
     }
   }
 
-  async function wrap(key, fn, ttl) {
+  async function wrap(key, fn, ttl, { signal } = {}) {
+    throwIfAborted(signal);
     const cached = get(key);
     if (cached !== undefined) return cached; // note: a cached `null` is a hit (negative cache)
-    if (inflight.has(key)) return inflight.get(key);
-
-    const promise = (async () => {
-      try {
-        const value = await fn();
-        set(key, value, ttl);
+    let promise = inflight.get(key);
+    if (!promise) {
+      // Register before calling the loader, including loaders that throw or
+      // resolve synchronously. Screen signals cancel only their own wait.
+      promise = Promise.resolve().then(fn).then((value) => {
+        if (inflight.get(key) === promise) set(key, value, ttl);
         return value;
-      } finally {
-        inflight.delete(key);
-      }
-    })();
-
-    inflight.set(key, promise);
-    return promise;
+      }).finally(() => {
+        if (inflight.get(key) === promise) inflight.delete(key);
+      });
+      inflight.set(key, promise);
+    }
+    return awaitWithSignal(promise, signal);
   }
 
   return {

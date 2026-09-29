@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Box, Text } from 'ink';
+import { sanitizeTerminalText } from '../lib/text.js';
 
 const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
@@ -11,14 +12,14 @@ export function Spinner({ label = 'Loading' }) {
     const t = setInterval(() => setFrame((f) => (f + 1) % FRAMES.length), 80);
     return () => clearInterval(t);
   }, []);
-  return <Text color="cyan">{`${FRAMES[frame]} ${label}…`}</Text>;
+  return <Text color="cyan" wrap="truncate-end">{`${FRAMES[frame]} ${sanitizeTerminalText(label)}…`}</Text>;
 }
 
-export function Header({ title, subtitle }) {
+export function Header({ title, subtitle, compact = false }) {
   return (
-    <Box flexDirection="column" marginBottom={1}>
-      <Text color="magentaBright" bold>{title}</Text>
-      {subtitle ? <Text dimColor>{subtitle}</Text> : null}
+    <Box flexDirection="column" marginBottom={compact ? 0 : 1}>
+      <Text color="magentaBright" bold wrap="truncate-end">{sanitizeTerminalText(title)}</Text>
+      {subtitle && !compact ? <Text dimColor wrap="truncate-end">{sanitizeTerminalText(subtitle)}</Text> : null}
     </Box>
   );
 }
@@ -26,17 +27,21 @@ export function Header({ title, subtitle }) {
 export function ErrorView({ error }) {
   return (
     <Box flexDirection="column">
-      <Text color="red" bold>{`✖ ${error?.message || 'Something went wrong'}`}</Text>
+      <Text color="red" bold wrap="truncate-end">{`✖ ${sanitizeTerminalText(error?.message || 'Something went wrong')}`}</Text>
       {error?.statusCode ? <Text dimColor>{`status ${error.statusCode}`}</Text> : null}
     </Box>
   );
 }
 
 // Footer key legend. `hints` is an array of [key, label] pairs.
-export function KeyHints({ hints = [] }) {
+export function KeyHints({ hints = [], compact = false }) {
   return (
-    <Box marginTop={1}>
-      <Text dimColor>{hints.map(([k, l]) => `${k} ${l}`).join('   ')}</Text>
+    <Box marginTop={compact ? 0 : 1}>
+      <Text dimColor wrap="truncate-end">{hints.map(([k, l]) => `${sanitizeTerminalText(k)} ${sanitizeTerminalText(l)}`).join('   ')}</Text>
     </Box>
   );
+}
+
+export function ResizeHint() {
+  return <Text dimColor wrap="truncate-end">Resize terminal to continue. Esc goes back.</Text>;
 }

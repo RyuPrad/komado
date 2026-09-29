@@ -36,10 +36,13 @@ describe('sliceSixelPage', () => {
 
   it('clamps a window that runs past the available bands', () => {
     const p = parseSixelPage(CRAFTED);
-    const { sixel, startBand } = sliceSixelPage(p, { startBand: 5, numBands: 10 });
+    const { sixel, startBand, bands, numBands, height } = sliceSixelPage(p, { startBand: 5, numBands: 10 });
     const s = sixel.toString('latin1');
     expect(startBand).toBe(0); // clamped: k == total, start pinned to 0
     expect(s).toContain('"1;1;4;12'); // Pv = 2 × 6, full height
+    expect(bands).toBe(2); // total page length retains its existing meaning
+    expect(numBands).toBe(2);
+    expect(height).toBe(12); // actual clamped image height, not the requested 60px
   });
 });
 
@@ -102,4 +105,3 @@ describe.skipIf(!hasChafa)('encodeSixelPage colors option (motion-quality)', () 
     expect(sizeOf(low)).toBeLessThan(sizeOf(full));
   });
 });
-

@@ -141,10 +141,12 @@ beforeEach(() => {
   mocks.encodeSixelPage.mockReset().mockImplementation(async (scaled, { colors } = {}) => (
     parsedPage(scaled.toString(), colors ? 'glide' : 'full')
   ));
-  mocks.sliceSixelPage.mockReset().mockImplementation((encoded, { startBand }) => ({
+  mocks.sliceSixelPage.mockReset().mockImplementation((encoded, { startBand, numBands }) => ({
     sixel: Buffer.from(`IMAGE:${encoded.kind}:${encoded.id}:TOP:${startBand}`),
     startBand,
     bands: encoded.bands.length,
+    numBands: Math.min(numBands, encoded.bands.length),
+    height: Math.min(numBands, encoded.bands.length) * 6,
   }));
   mocks.renderStatusBar.mockReset().mockImplementation(({ info, page: pageLabel }) => (
     `STATUS:${info}:${pageLabel}`
@@ -162,7 +164,7 @@ afterEach(() => {
   }
 });
 
-function startViewer({ chapters, pagesByChapter }) {
+function startViewer({ chapters, pagesByChapter, caps = { sixel: true, cellW: 1, cellH: 6 } }) {
   mocks.source = {
     getPages: vi.fn(async (chapterId) => pagesByChapter[chapterId]),
     loadPageBuffer: vi.fn(async (descriptor) => Buffer.from(descriptor.id)),
@@ -173,7 +175,7 @@ function startViewer({ chapters, pagesByChapter }) {
     manga,
     chapters,
     chapterIndex: 0,
-    caps: { sixel: true, cellW: 1, cellH: 6 },
+    caps,
   });
   return { promise, source: mocks.source };
 }
@@ -278,10 +280,12 @@ describe('pixel viewer stale draws', () => {
     delayed.resolve(parsedPage('c1p1@80'));
 
     await waitFor(() => stdout.text().includes('IMAGE:full:c2p0@80'), 'new-chapter repaint');
+    const currentFrame = stdout.writes.find((buf) => buf.toString().includes('IMAGE:full:c2p0@80'));
     await quit(promise);
 
     expect(stdout.text()).not.toContain('IMAGE:full:c1p1@80');
     expect(stdout.text()).not.toContain('Error:');
+    expect(currentFrame.toString()).toContain('\x1b[2J');
     expect(mocks.setProgress.mock.calls.map(([, value]) => [value.chapterId, value.page]))
       .toEqual([['c1', 0], ['c2', 0]]);
   });
@@ -498,5 +502,141 @@ describe('pixel viewer glide fallback tier', () => {
     // be whole-viewport because the preceding fallback used the full palette.
     expect(firstGlide).not.toContain('\x1b[1;23r');
     expect(glideCalls).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe('pixel viewer image boundaries', () => {
+  const realCells = { sixel: true, cellW: 10, cellH: 20 };
+
+  it.each([18, 20])('clears a previous tall page before painting a %i-band page', async (bandCount) => {
+    mocks.encodeSixelPage.mockImplementation(async (scaled) => {
+      const encoded = parsedPage(scaled.toString());
+      if (encoded.id === 'p1@80') encoded.bands = Array.from({ length: bandCount }, () => '#0~');
+      return encoded;
+    });
+    const { promise } = startViewer({
+      chapters: [chapter('c1', '1')],
+      pagesByChapter: { c1: [page('p0', 0), page('p1', 1)] },
+      caps: realCells,
+    });
+    await readyForInput();
+    const mark = stdout.writes.length;
+    stdin.emit('data', Buffer.from('d'));
+    await waitFor(() => mocks.setProgress.mock.calls.some(([, value]) => value.page === 1), 'short page');
+    const frame = stdout.writes.slice(mark).find((buf) => buf.toString().includes('IMAGE:full:p1@80'));
+    await quit(promise);
+
+    expect(frame.toString().startsWith('\x1b[?2026h\x1b[2J\x1b[H')).toBe(true);
+    expect(frame.toString()).toContain(`\x1b[${Math.ceil(bandCount * 6 / 20) + 1};1H\x1b[0J`);
+    expect(frame.toString()).toContain('\x1b[24;1HSTATUS:Ch. 1 (Vol. 1):2/2');
+  });
+
+  it('clears once when changing fit modes and erases below the occupied image cells', async () => {
+    mocks.prepareImage.mockResolvedValue({
+      buffer: Buffer.from('fit'), imageRows: 6, maxScroll: 0, scroll: 0,
+    });
+    mocks.encodePixels.mockResolvedValue(Buffer.from('FIT-IMAGE'));
+    const { promise } = startViewer({
+      chapters: [chapter('c1', '1')],
+      pagesByChapter: { c1: [page('p0', 0)] },
+      caps: realCells,
+    });
+    await readyForInput();
+    const mark = stdout.writes.length;
+    stdin.emit('data', Buffer.from('f'));
+    await waitFor(() => stdout.writes.slice(mark).some((buf) => buf.toString().includes('FIT-IMAGE')), 'fit frame');
+    stdin.emit('data', Buffer.from('f'));
+    await waitFor(() => mocks.setProgress.mock.calls.length === 3, 'width frame');
+    const frames = stdout.writes.slice(mark).map((buf) => buf.toString());
+    await quit(promise);
+
+    expect(frames.find((text) => text.includes('FIT-IMAGE'))).toContain('\x1b[7;1H\x1b[0J');
+    expect(frames.filter((text) => text.includes('\x1b[2J'))).toHaveLength(2);
+  });
+
+  it('uses matching whole-cell and whole-band regions for strip scrolling in both directions', async () => {
+    process.env.KOMADO_SCROLL_DELTA = '1';
+    const { promise } = startViewer({
+      chapters: [chapter('c1', '1')],
+      pagesByChapter: { c1: [page('p0', 0)] },
+      caps: realCells,
+    });
+    await readyForInput();
+    const initial = stdout.writes.find((buf) => buf.toString().includes('IMAGE:full:p0@80'));
+    const firstWindow = mocks.sliceSixelPage.mock.calls[0][1];
+    const mark = stdout.writes.length;
+    stdin.emit('data', Buffer.from('j'));
+    await waitFor(() => mocks.setProgress.mock.calls.length === 2, 'down strip');
+    stdin.emit('data', Buffer.from('k'));
+    await waitFor(() => mocks.setProgress.mock.calls.length === 3, 'up strip');
+    const frames = stdout.writes.slice(mark).map((buf) => buf.toString());
+    await quit(promise);
+
+    expect(firstWindow.numBands).toBe(70); // 420px = 21 cells, leaving two blank rows
+    expect(initial.toString()).toContain('\x1b[22;1H\x1b[0J');
+    expect(frames[0]).toContain('\x1b[1;21r\x1b[21;1H\n\n\n\x1b[r\x1b[19;1H');
+    expect(frames[0]).toContain('IMAGE:full:p0@80:TOP:70');
+    expect(frames[1]).toContain('\x1b[1;21r\x1b[1;1H\x1bM\x1bM\x1bM\x1b[r\x1b[1;1H');
+    expect(frames.every((text) => !text.includes('\x1b[2J'))).toBe(true);
+    expect(frames.every((text) => text.includes('\x1b[24;1HSTATUS:'))).toBe(true);
+    expect(mocks.encodeSixelPage).toHaveBeenCalledTimes(1); // scroll remains encode-once
+  });
+
+  it('keeps all available bands when strip scrolling is disabled', async () => {
+    const { promise } = startViewer({
+      chapters: [chapter('c1', '1')],
+      pagesByChapter: { c1: [page('p0', 0)] },
+      caps: realCells,
+    });
+    await readyForInput();
+    const firstWindow = mocks.sliceSixelPage.mock.calls[0][1];
+    await quit(promise);
+    expect(firstWindow.numBands).toBe(76); // 456px; no alignment cost without deltas
+  });
+
+  it('falls back to full windows when the viewport cannot fit a strip slot', async () => {
+    process.env.KOMADO_SCROLL_DELTA = '1';
+    stdout.rows = 6;
+    const { promise } = startViewer({
+      chapters: [chapter('c1', '1')],
+      pagesByChapter: { c1: [page('p0', 0)] },
+      caps: { sixel: true, cellW: 10, cellH: 7 },
+    });
+    await readyForInput();
+    const mark = stdout.writes.length;
+    stdin.emit('data', Buffer.from('j'));
+    await waitFor(() => mocks.setProgress.mock.calls.length === 2, 'small-viewport pan');
+    const frame = stdout.writes.slice(mark).find((buf) => buf.toString().includes('IMAGE:full:p0@80'));
+    await quit(promise);
+
+    expect(mocks.sliceSixelPage.mock.calls.every(([, options]) => options.numBands === 5)).toBe(true);
+    expect(frame.toString()).not.toContain('\x1b[1;5r');
+    expect(frame.toString()).not.toContain('\x1b[2J');
+  });
+
+  it('lands smooth strip scrolling precisely at full color without clearing pan frames', async () => {
+    delete process.env.KOMADO_NO_SMOOTH;
+    delete process.env.KOMADO_NO_MOTION_QUALITY;
+    process.env.KOMADO_SCROLL_DELTA = '1';
+    const { promise } = startViewer({
+      chapters: [chapter('c1', '1')],
+      pagesByChapter: { c1: [page('p0', 0)] },
+      caps: realCells,
+    });
+    await readyForInput();
+    const mark = stdout.writes.length;
+    stdin.emit('data', Buffer.from('G'));
+    await waitFor(
+      () => stdout.writes.slice(mark).some((buf) => buf.toString().includes('IMAGE:full:p0@80:TOP:50\x1b')),
+      'full-color landing',
+    );
+    const frames = stdout.writes.slice(mark).map((buf) => buf.toString());
+    await quit(promise);
+
+    expect(frames.every((text) => !text.includes('\x1b[2J'))).toBe(true);
+    expect(frames.some((text) => text.includes('\x1b[1;21r'))).toBe(true);
+    expect(frames.at(-1)).toContain('IMAGE:full:p0@80:TOP:50\x1b');
+    expect(frames.at(-1)).not.toContain('\x1b[1;21r');
+    expect(mocks.encodeSixelPage).toHaveBeenCalledTimes(2); // one full and one glide encode
   });
 });

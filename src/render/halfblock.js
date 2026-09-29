@@ -7,11 +7,17 @@ const RESET = `${ESC}[0m`;
 // the glyph's foreground paints the TOP half of the cell, the background the
 // BOTTOM half - so each character encodes two vertical pixels at 24-bit colour.
 // One column == one pixel wide, one row == two pixels tall.
-export async function renderHalfBlock(buffer, { cols = 80 } = {}) {
+export async function renderHalfBlock(buffer, { cols = 80, maxRows } = {}) {
   const targetWidth = Math.max(1, Math.min(Math.floor(cols), 400));
 
   const { data, info } = await sharp(buffer)
-    .resize({ width: targetWidth, fit: 'inside', withoutEnlargement: false })
+    .rotate()
+    .resize({
+      width: targetWidth,
+      ...(maxRows > 0 ? { height: Math.max(1, Math.floor(maxRows)) * 2 } : {}),
+      fit: 'inside',
+      withoutEnlargement: false,
+    })
     .flatten({ background: '#ffffff' }) // composite any transparency onto white
     .raw()
     .toBuffer({ resolveWithObject: true });

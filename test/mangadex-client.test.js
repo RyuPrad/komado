@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   fetchWithBackoff: vi.fn(),
   getAccessToken: vi.fn(),
   isLoggedIn: vi.fn(),
+  generation: 0,
 }));
 
 vi.mock('../src/lib/fetchWithBackoff.js', () => ({
@@ -14,6 +15,7 @@ vi.mock('../src/lib/fetchWithBackoff.js', () => ({
 vi.mock('../src/sources/mangadex/auth.js', () => ({
   getAccessToken: (...args) => mocks.getAccessToken(...args),
   isLoggedIn: () => mocks.isLoggedIn(),
+  getSessionGeneration: () => mocks.generation,
 }));
 
 const { mdGet, mdSend } = await import('../src/sources/mangadex/client.js');
@@ -25,6 +27,7 @@ beforeEach(() => {
   mocks.fetchWithBackoff.mockReset();
   mocks.getAccessToken.mockReset();
   mocks.isLoggedIn.mockReset().mockReturnValue(true);
+  mocks.generation = 0;
 });
 
 describe('MangaDex 401 recovery', () => {
@@ -137,5 +140,23 @@ describe('MangaDex 401 recovery', () => {
 
     expect(mocks.fetchWithBackoff).toHaveBeenCalledTimes(2);
     expect(mocks.fetchWithBackoff.mock.calls[1][1].headers).not.toHaveProperty('Authorization');
+  });
+
+  it('does not retry an old account write with the new account token', async () => {
+    mocks.getAccessToken.mockResolvedValue('A-token');
+    mocks.fetchWithBackoff.mockImplementationOnce(async () => {
+      mocks.generation += 1;
+      return { ok: false, status: 401 };
+    });
+    await expect(mdSend('POST', '/manga/m1/read', {})).rejects.toMatchObject({ statusCode: 401 });
+    expect(mocks.getAccessToken).toHaveBeenCalledTimes(1);
+    expect(mocks.fetchWithBackoff).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a read-marker push captured for a previous session before sending', async () => {
+    mocks.generation = 1;
+    await expect(mdSend('POST', '/manga/m1/read', {}, { session: 0 })).rejects.toThrow('account changed');
+    expect(mocks.getAccessToken).not.toHaveBeenCalled();
+    expect(mocks.fetchWithBackoff).not.toHaveBeenCalled();
   });
 });

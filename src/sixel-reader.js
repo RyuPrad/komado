@@ -5,6 +5,7 @@ import { encodePixels, prepareImage, scalePage, encodeSixelPage, sliceSixelPage 
 import { renderStatusBar, hintLine } from './render/statusbar.js';
 import { createKeyTokenizer } from './lib/keys.js';
 import { easeToward } from './lib/motion.js';
+import { sanitizeTerminalText } from './lib/text.js';
 import { logger } from './lib/logger.js';
 
 const ESC = '\x1b';
@@ -303,10 +304,16 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
         }
         if (isDrawStale(state)) return;
 
-        const viewBands = Math.max(1, Math.floor((imgRows * cellH) / 6));
+        const availableBands = Math.max(1, Math.floor((imgRows * cellH) / 6));
+        const alignedBands = Math.floor(availableBands / slotBands) * slotBands;
+        // Delta scrolling must use the same pixel height as its whole-cell
+        // region. Leave unused rows blank; fall back when no whole slot fits.
+        const canStrip = stripScroll && alignedBands >= slotBands;
+        const viewBands = canStrip ? alignedBands : availableBands;
+        const regionRows = Math.round((viewBands * 6) / cellH);
         const maxStart = Math.max(0, page.bands.length - viewBands);
         let topBand = Math.round((state.scroll * cellH) / 6);
-        if (stripScroll) {
+        if (canStrip) {
           // Glide on the slot grid so consecutive frames strip-scroll; within
           // a slot of the target, land on the exact band (one full repaint).
           // Legacy discrete mode (KOMADO_NO_SMOOTH) always slot-rounds.
@@ -317,7 +324,7 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
         }
         topBand = Math.max(0, Math.min(topBand, maxStart));
 
-        imageRows = Math.round((viewBands * 6) / cellH);
+        imageRows = Math.ceil((Math.min(viewBands, page.bands.length) * 6) / cellH);
         mScroll = (maxStart * 6) / cellH;
         sScroll = (topBand * 6) / cellH;
 
@@ -327,15 +334,16 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
 
         if (reuse && delta === 0) {
           frame = null; // identical frame already on screen
-        } else if (stripScroll && reuse && delta !== 0
+        } else if (canStrip && reuse && delta !== 0
             && Math.abs(delta) % slotBands === 0 && Math.abs(delta) < viewBands) {
           frame = buildDeltaFrame(page, {
-            from: shownTop, to: topBand, viewBands, imgRows, rows, status,
+            from: shownTop, to: topBand, viewBands, regionRows, rows, status,
           });
           frameKind = 'strip';
         } else {
-          const win = sliceSixelPage(page, { startBand: topBand, numBands: viewBands }).sixel;
-          frame = composeFull(win, { fullClear, imageRows, imgRows, rows, status });
+          const win = sliceSixelPage(page, { startBand: topBand, numBands: viewBands });
+          imageRows = Math.ceil(win.height / cellH);
+          frame = composeFull(win.sixel, { fullClear, imageRows, imgRows, rows, status });
           frameKind = tier === 'g' ? 'glide' : 'full';
         }
         nextShownTop = topBand;
@@ -430,7 +438,7 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
       shownSig = null;
       stdout.write(`${ESC}[2J${ESC}[H${ESC}[0m`);
       const hints = hintLine([{ keys: 'n/p', label: 'chapter' }, { keys: 'q', label: 'back' }]);
-      stdout.write(`${ESC}[1;38;5;203mError:${ESC}[0m ${err.message}\r\n\r\n${hints}\r\n`);
+      stdout.write(`${ESC}[1;38;5;203mError:${ESC}[0m ${sanitizeTerminalText(err.message)}\r\n\r\n${hints}\r\n`);
       return true;
     }
   }
@@ -454,16 +462,16 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
   // re-sending the whole viewport. Valid only for slot-sized shifts (whole cells
   // AND whole bands), so the moved pixels stay band-aligned and there's no seam.
   // Uses LF/RI inside a DECSTBM region (the most widely supported scroll path).
-  function buildDeltaFrame(page, { from, to, viewBands, imgRows, rows, status }) {
+  function buildDeltaFrame(page, { from, to, viewBands, regionRows, rows, status }) {
     const delta = to - from; // bands, a non-zero multiple of slotBands
     const dc = Math.round((Math.abs(delta) * 6) / cellH); // whole cells scrolled
-    const region = `${ESC}[1;${imgRows}r`;
+    const region = `${ESC}[1;${regionRows}r`;
     const reset = `${ESC}[r`;
     const statusLine = `${ESC}[${rows};1H${status}`;
     let head; let strip;
     if (delta > 0) {
       // content up → repaint the freed strip at the bottom
-      head = `${region}${ESC}[${imgRows};1H${'\n'.repeat(dc)}${reset}${ESC}[${imgRows - dc + 1};1H`;
+      head = `${region}${ESC}[${regionRows};1H${'\n'.repeat(dc)}${reset}${ESC}[${regionRows - dc + 1};1H`;
       strip = sliceSixelPage(page, { startBand: from + viewBands, numBands: delta }).sixel;
     } else {
       // content down → repaint the freed strip at the top
@@ -570,6 +578,7 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
     maxScroll = 0;
     shownTop = null;
     shownSig = null;
+    needsFullClear = true; // page changes clear partial-cell remnants once, never on pans
     pages = null;
     return true;
   }
@@ -577,6 +586,7 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
     if (!pages) return false; // chapter still loading - a blind advance would skip it
     if (pi < pages.length - 1) {
       pi += 1; scroll = 0; scrollTarget = 0; maxScroll = 0; shownTop = null; shownSig = null;
+      needsFullClear = true;
       return true;
     }
     return changeChapter(1); // incl. a pageless chapter (pages=[]) - arrows move on
@@ -585,6 +595,7 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
     if (!pages) return false;
     if (pi > 0) {
       pi -= 1; scroll = 0; scrollTarget = 0; maxScroll = 0; shownTop = null; shownSig = null;
+      needsFullClear = true;
       return true;
     }
     return changeChapter(-1);
@@ -667,6 +678,7 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
             scroll = 0;
             scrollTarget = 0;
             shownTop = null; shownSig = null; // render path changes → fresh baseline
+            needsFullClear = true;
             dirty = true;
           } else if (k === 'g') {
             dirty = panTo(0, 'top') || dirty; // jump to top

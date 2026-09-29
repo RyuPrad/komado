@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'ink-testing-library';
 import { UIContext } from '../src/ui-context.js';
+import { displayWidth } from '../src/lib/text.js';
 
 const mocks = vi.hoisted(() => ({
   entries: [],
@@ -52,6 +53,51 @@ beforeEach(() => {
 });
 
 describe('ContinueScreen recovery', () => {
+  it('keeps long history rows selectable inside a short narrow viewport', async () => {
+    mocks.entries = Array.from({ length: 16 }, (_, i) => ({
+      ...entry, mangaId: `m${i}`, mangaTitle: '日本語の長いタイトル'.repeat(5),
+    }));
+    const view = render(
+      <UIContext.Provider value={{ dimensions: { cols: 28, rows: 8 }, openReader: vi.fn(), navigate: vi.fn() }}>
+        <ContinueScreen />
+      </UIContext.Provider>,
+    );
+    await sleep(25);
+    view.stdin.write('G');
+    await sleep(25);
+    const lines = view.lastFrame().split('\n');
+    expect(lines.length).toBeLessThanOrEqual(7);
+    expect(lines.every((line) => displayWidth(line) <= 26)).toBe(true);
+    view.stdin.write('\r');
+    await waitFor(() => mocks.getManga.mock.calls.length === 1);
+    expect(mocks.getManga.mock.calls[0][0]).toBe('m15');
+    view.unmount();
+  });
+
+  it.each([true, false])('ignores an abandoned opening after unmount (exact match: %s)', async (exact) => {
+    let resolveChapters;
+    mocks.listAllChapters.mockImplementation(() => new Promise((resolve) => { resolveChapters = resolve; }));
+    const openReader = vi.fn();
+    const navigate = vi.fn();
+    const view = render(
+      <UIContext.Provider value={{ dimensions: { cols: 80, rows: 24 }, openReader, navigate }}>
+        <ContinueScreen />
+      </UIContext.Provider>,
+    );
+    await sleep(20);
+    view.stdin.write('\r');
+    await waitFor(() => mocks.listAllChapters.mock.calls.length === 1);
+    const signal = mocks.listAllChapters.mock.calls[0][2].signal;
+    expect(mocks.getManga.mock.calls[0][1].signal).toBe(signal);
+    view.unmount();
+    expect(signal.aborted).toBe(true);
+    // This source deliberately ignores cancellation, as local filesystem work can.
+    resolveChapters([{ id: exact ? 'old-id' : 'different', number: exact ? '12' : '1', volume: '3' }]);
+    await sleep(25);
+    expect(openReader).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
   it('resumes an exact chapter id at the saved page', async () => {
     mocks.chapters = [{ id: 'old-id', number: '12', volume: '3' }];
     const openReader = vi.fn();
