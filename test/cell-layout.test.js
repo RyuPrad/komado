@@ -1,14 +1,23 @@
 import { EventEmitter } from 'node:events';
 import { stripVTControlCharacters } from 'node:util';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Box, render } from 'ink';
 import { UIContext } from '../src/ui-context.js';
 import { ReaderScreen } from '../src/components/screens/ReaderScreen.js';
 import { getInkViewport } from '../src/lib/layout.js';
 import { displayWidth } from '../src/lib/text.js';
 
-// Exercise Ink's interactive output branch even when these tests run in CI.
-vi.mock('is-in-ci', () => ({ default: false }));
+// Ink's native ESM dependencies do not see Vitest dependency mocks. Select its
+// interactive output branch before importing Ink, including on CI workers.
+const previousCI = vi.hoisted(() => {
+  const previous = process.env.CI;
+  process.env.CI = 'false';
+  return previous;
+});
+afterAll(() => {
+  if (previousCI === undefined) delete process.env.CI;
+  else process.env.CI = previousCI;
+});
 const mocks = vi.hoisted(() => ({ renderInline: vi.fn(), setProgress: vi.fn() }));
 vi.mock('../src/sources/index.js', () => ({
   getSource: () => ({

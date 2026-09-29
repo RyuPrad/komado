@@ -168,13 +168,14 @@ describe('ReaderScreen prefetch', () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
     pageB.resolve(Buffer.from('B'));
     await waitFor(() => lastFrame().includes('rendered-B'));
+    const readyFrame = lastFrame();
     unmount();
 
     const pageBLoads = mocks.loadPageBuffer.mock.calls.filter(([page]) => page.index === 1);
     const pageBRenders = mocks.renderInline.mock.calls.filter(([buf]) => buf.toString() === 'B');
     expect(pageBLoads).toHaveLength(1);
     expect(pageBRenders).toHaveLength(1);
-    expect(lastFrame()).toMatch(/\b2\/2\b/);
+    expect(readyFrame).toMatch(/\b2\/2\b/);
   });
 
   it('evicts a rejected prefetch so the foreground render can retry', async () => {
@@ -192,10 +193,11 @@ describe('ReaderScreen prefetch', () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
     stdin.write('l');
     await waitFor(() => lastFrame().includes('rendered-B-retry'));
+    const readyFrame = lastFrame();
     unmount();
 
     expect(pageBAttempts).toBe(2);
-    expect(lastFrame()).toMatch(/\b2\/2\b/);
+    expect(readyFrame).toMatch(/\b2\/2\b/);
   });
 
   it('never keys old descriptors as the new chapter during a chapter change', async () => {
@@ -225,9 +227,10 @@ describe('ReaderScreen prefetch', () => {
 
     nextChapter.resolve(newPages);
     await waitFor(() => lastFrame().includes('rendered-new-0'));
+    const readyFrame = lastFrame();
     unmount();
 
-    expect(lastFrame()).toMatch(/Ch\. 2/);
-    expect(lastFrame()).not.toContain('rendered-old-0');
+    expect(readyFrame).toMatch(/Ch\. 2/);
+    expect(readyFrame).not.toContain('rendered-old-0');
   });
 });
