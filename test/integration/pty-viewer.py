@@ -127,6 +127,9 @@ def main():
 
         env = os.environ.copy()
         env.update({
+            # This child is an interactive terminal; Ink otherwise suppresses
+            # live frames when it inherits the CI runner's environment flag.
+            "CI": "false",
             "KOMADO_HOME": str(home),
             "KOMADO_FORCE_PIXEL": "1",
             "KOMADO_NO_MOUSE": "1",
