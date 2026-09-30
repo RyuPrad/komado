@@ -10,11 +10,13 @@ export function List({
   onHighlight,
   renderItem,
   height = 12,
+  showPosition = true,
   isActive = true,
   emptyText = 'Nothing here yet.',
 }) {
   const [index, setIndex] = useState(0);
   const count = items.length;
+  const windowHeight = Math.max(1, Math.floor(Number.isFinite(height) ? height : 12));
   // Clamp on read instead of in an effect, so a shrinking list can't leave the
   // selection out of range (and there's no cascading setState-in-effect).
   const selected = count ? Math.min(index, count - 1) : 0;
@@ -34,26 +36,26 @@ export function List({
     if (!count) return;
     if (key.downArrow || input === 'j') setIndex(Math.min(count - 1, selected + 1));
     else if (key.upArrow || input === 'k') setIndex(Math.max(0, selected - 1));
-    else if (key.pageDown) setIndex(Math.min(count - 1, selected + height));
-    else if (key.pageUp) setIndex(Math.max(0, selected - height));
+    else if (key.pageDown) setIndex(Math.min(count - 1, selected + windowHeight));
+    else if (key.pageUp) setIndex(Math.max(0, selected - windowHeight));
     else if (input === 'g') setIndex(0);
     else if (input === 'G') setIndex(count - 1);
     else if (key.return) onSelect?.(items[selected], selected);
   }, { isActive });
 
   if (!count) {
-    return <Text dimColor>{emptyText}</Text>;
+    return <Text dimColor wrap="truncate-end">{emptyText}</Text>;
   }
 
   // Vertical window centred on the selection.
-  const start = Math.max(0, Math.min(selected - Math.floor(height / 2), Math.max(0, count - height)));
-  const slice = items.slice(start, start + height);
+  const start = Math.max(0, Math.min(selected - Math.floor(windowHeight / 2), Math.max(0, count - windowHeight)));
+  const slice = items.slice(start, start + windowHeight);
 
   return (
     <Box flexDirection="column">
       {slice.map((item, i) => renderItem(item, start + i === selected, start + i))}
-      {count > height ? (
-        <Text key="more" dimColor>{`  · ${selected + 1}/${count} ·`}</Text>
+      {showPosition && count > windowHeight ? (
+        <Text key="more" dimColor wrap="truncate-end">{`  · ${selected + 1}/${count} ·`}</Text>
       ) : null}
     </Box>
   );

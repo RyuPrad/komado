@@ -114,12 +114,14 @@ node dist/cli.js render https://example.com/page.png 100
 |---|---|---|
 | Lists | `↑`/`↓` or `j`/`k`, `g`/`G`, `PgUp`/`PgDn` | move / jump / page |
 | Lists | `enter` | open · `/` focus search · `esc` back |
+| Search / My Library | `r` | retry a failed request (outside search input) |
 | Reader | `↑`/`↓` or `j`/`k` | scroll within a page |
-| Reader | `←`/`→` or `a`/`d`, `space` | previous / next page |
+| Reader | `←`/`→` | previous / next page (`a`/`d` in the pixel viewer; `h`/`l` in the cell reader) |
+| Reader | `space` | scroll down, then advance to the next page |
 | Reader | `N` / `P` | next / previous chapter |
 | Reader | `f` | toggle fit-to-screen |
-| Reader | `r` | cycle renderer (`auto` → `halfblock` → `chafa`) |
-| Global | `q` | quit · `esc` back |
+| Cell reader | `r` | cycle renderer (`auto` → `halfblock` → `chafa`) |
+| Global | `q` | quit (back to menus in the pixel viewer) · `esc` back |
 
 ## Rendering quality
 

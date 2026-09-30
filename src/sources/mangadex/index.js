@@ -1,5 +1,5 @@
 import { mdGet, mdSend } from './client.js';
-import { isLoggedIn } from './auth.js';
+import { isLoggedIn, getSessionGeneration } from './auth.js';
 import { normalizeManga, normalizeChapter } from './normalize.js';
 import { fetchWithBackoff } from '../../lib/fetchWithBackoff.js';
 import { createCache } from '../../lib/cache.js';
@@ -29,7 +29,8 @@ export async function search(query, { offset = 0, limit = MANGADEX.pageLimit, si
       contentRating: cfg.contentRating,
       hasAvailableChapters: 'true',
       order,
-    }, { signal }),
+    }),
+    undefined, { signal },
   );
   const data = (res.data || []).map(normalizeManga);
   return envelope(data, {
@@ -40,7 +41,8 @@ export async function search(query, { offset = 0, limit = MANGADEX.pageLimit, si
 
 export async function getManga(mangaId, { signal } = {}) {
   const res = await cache.wrap(`manga:${mangaId}`, () =>
-    mdGet(`/manga/${mangaId}`, { includes: ['cover_art', 'author', 'artist'] }, { signal }),
+    mdGet(`/manga/${mangaId}`, { includes: ['cover_art', 'author', 'artist'] }),
+    undefined, { signal },
   );
   if (!res.data) throw new NotFoundError(`Manga ${mangaId} not found`);
   return normalizeManga(res.data);
@@ -61,7 +63,8 @@ export async function listChapters(mangaId, { offset = 0, limit = 96, language, 
       contentRating: ratings,
       includes: ['scanlation_group'],
       order: { volume: 'asc', chapter: 'asc' },
-    }, { signal }),
+    }),
+    undefined, { signal },
   );
 
   const mangaKey = globalKey(id, mangaId);
@@ -92,8 +95,9 @@ export async function getPages(chapterId, { signal, fresh = false } = {}) {
   if (fresh) cache.delete(key);
   const server = await cache.wrap(
     key,
-    () => mdGet(`/at-home/server/${chapterId}`, null, { signal }),
+    () => mdGet(`/at-home/server/${chapterId}`, null),
     60_000,
+    { signal },
   );
   if (!server.chapter) throw new NotFoundError(`No pages for chapter ${chapterId}`);
 
@@ -158,26 +162,30 @@ export async function getReadMarkers(mangaId, { signal } = {}) {
   return res.data || [];
 }
 
-export async function markChaptersRead(mangaId, chapterIdsRead, { signal } = {}) {
+export async function markChaptersRead(mangaId, chapterIdsRead, { signal, session } = {}) {
   if (!chapterIdsRead?.length) return;
   await mdSend('POST', `/manga/${mangaId}/read`, {
     chapterIdsRead,
     chapterIdsUnread: [],
-  }, { signal });
+  }, { signal, session });
 }
 
 // Fire-and-forget read-marker push when a chapter is finished. Self-guards on
 // login + the syncProgress setting and dedupes per session, so a reader can
 // call it freely (e.g. on every settle at the last page) without spamming.
-const pushedRead = new Set();
+let pushedRead = { generation: null, chapters: new Set() };
 export async function syncChapterRead(mangaId, chapterId) {
-  if (!chapterId || pushedRead.has(chapterId)) return;
+  if (!chapterId) return;
   if (!isLoggedIn() || !getConfig().syncProgress) return;
-  pushedRead.add(chapterId);
+  const generation = getSessionGeneration();
+  if (pushedRead.generation !== generation) pushedRead = { generation, chapters: new Set() };
+  const pushed = pushedRead.chapters;
+  if (pushed.has(chapterId)) return;
+  pushed.add(chapterId);
   try {
-    await markChaptersRead(mangaId, [chapterId]);
+    await markChaptersRead(mangaId, [chapterId], { session: generation });
   } catch (err) {
-    pushedRead.delete(chapterId); // let a later attempt retry
+    pushed.delete(chapterId); // a stale failure must not clear the new session's set
     logger.warn('failed to push read marker', err);
   }
 }

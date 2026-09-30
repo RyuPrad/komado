@@ -4,6 +4,13 @@ export function truncate(str, max) {
   return s.slice(0, Math.max(1, max - 1)) + '…';
 }
 
+// Metadata belongs on one terminal row. Keep source values intact and remove
+// control bytes only at display boundaries, before measuring or truncating.
+export function sanitizeTerminalText(str) {
+  // eslint-disable-next-line no-control-regex
+  return String(str ?? '').replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, ' ');
+}
+
 function charWidth(cp) {
   // Combining marks, variation selectors, ZWJ: zero cells.
   if ((cp >= 0x0300 && cp <= 0x036f) || (cp >= 0xfe00 && cp <= 0xfe0f) || cp === 0x200d) return 0;

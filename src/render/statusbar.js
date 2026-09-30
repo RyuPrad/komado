@@ -1,4 +1,4 @@
-import { displayWidth, truncateWidth } from '../lib/text.js';
+import { displayWidth, truncateWidth, sanitizeTerminalText } from '../lib/text.js';
 
 // The raw viewer's bottom bar: title + chapter on the left, key hints + page
 // position on the right, drawn as 256-color segments instead of one
@@ -27,6 +27,12 @@ const FILL = bg(BAR_BG);
 // Hints as { keys, label, active? }; an active hint becomes a lit chip (the
 // key that toggles a mode doubles as its indicator). Exactly `cols` cells.
 export function renderStatusBar({ cols, title, info = '', page = '', hints = [] }) {
+  title = sanitizeTerminalText(title);
+  info = sanitizeTerminalText(info);
+  page = sanitizeTerminalText(page);
+  hints = hints.map((h) => ({
+    ...h, keys: sanitizeTerminalText(h.keys), label: sanitizeTerminalText(h.label),
+  }));
   const pageChip = ` ${page} `;
   const pageW = displayWidth(pageChip);
   const hintW = (h) => displayWidth(`${h.keys} ${h.label}`) + (h.active ? 2 : 0);
@@ -78,6 +84,6 @@ export function renderStatusBar({ cols, title, info = '', page = '', hints = [] 
 // bold keys, dim labels - attributes only, so it works on any theme.
 export function hintLine(hints) {
   return hints
-    .map((h) => `${ESC}[0;1m${h.keys}${ESC}[0;2m ${h.label}`)
+    .map((h) => `${ESC}[0;1m${sanitizeTerminalText(h.keys)}${ESC}[0;2m ${sanitizeTerminalText(h.label)}`)
     .join(`${ESC}[0m  `) + `${ESC}[0m`;
 }

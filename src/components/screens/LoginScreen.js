@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useLayoutEffect, useRef } from 'react';
 import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import { useUI } from '../../ui-context.js';
@@ -17,21 +17,32 @@ const FIELDS = [
 
 export function LoginScreen() {
   const ui = useUI();
+  const { setTyping } = ui;
   const [vals, setVals] = useState({ clientId: '', clientSecret: '', username: '', password: '' });
   const [idx, setIdx] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const mounted = useRef(true);
+  const request = useRef(null);
 
   // The whole screen is a form - keep global keys (q / Esc) suppressed.
-  useEffect(() => {
-    ui.setTyping(true);
-    return () => ui.setTyping(false);
-  }, []);
+  useLayoutEffect(() => {
+    mounted.current = true;
+    setTyping(true);
+    return () => {
+      // Invalidate synchronously: a completion can arrive before passive cleanup.
+      mounted.current = false;
+      const ctrl = request.current;
+      request.current = null;
+      ctrl?.abort();
+      setTyping(false);
+    };
+  }, [setTyping]);
 
   const setField = (key) => (v) => setVals((s) => ({ ...s, [key]: v }));
 
   const submit = async () => {
-    if (busy) return;
+    if (busy || request.current || !mounted.current) return;
     if (idx < FIELDS.length - 1) { setIdx(idx + 1); return; }
     if (FIELDS.some((f) => !vals[f.key].trim())) {
       setError(new Error('All four fields are required.'));
@@ -39,24 +50,39 @@ export function LoginScreen() {
     }
     setBusy(true);
     setError(null);
+    const ctrl = new AbortController();
+    request.current = ctrl;
+    const current = () => mounted.current && request.current === ctrl && !ctrl.signal.aborted;
     try {
       await login({
         clientId: vals.clientId.trim(),
         clientSecret: vals.clientSecret.trim(),
         username: vals.username.trim(),
         password: vals.password,
-      });
-      ui.goBack();
+      }, { signal: ctrl.signal });
+      if (current()) ui.goBack();
     } catch (err) {
-      setError(err);
-      setBusy(false);
+      if (current()) setError(err);
+    } finally {
+      if (current()) {
+        request.current = null;
+        setBusy(false);
+      }
     }
   };
 
   useInput((input, key) => {
+    if (!mounted.current) return;
+    if (key.escape) {
+      mounted.current = false;
+      const ctrl = request.current;
+      request.current = null;
+      ctrl?.abort();
+      ui.goBack();
+      return;
+    }
     if (busy) return;
-    if (key.escape) ui.goBack();
-    else if (key.tab || key.downArrow) setIdx((i) => (i + 1) % FIELDS.length);
+    if (key.tab || key.downArrow) setIdx((i) => (i + 1) % FIELDS.length);
     else if (key.upArrow) setIdx((i) => (i - 1 + FIELDS.length) % FIELDS.length);
   });
 

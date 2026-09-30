@@ -5,9 +5,12 @@ import { fileURLToPath } from 'node:url';
 
 const installer = fileURLToPath(new URL('../install.ps1', import.meta.url));
 
-function windowsPowerShell() {
+function powerShell({ windowsOnly = false } = {}) {
+  const probe = (windowsOnly
+    ? 'if ([System.Environment]::OSVersion.Platform -ne [System.PlatformID]::Win32NT) { exit 1 }; '
+    : '') + '$PSVersionTable.PSVersion.ToString()';
   for (const command of ['powershell.exe', 'powershell', 'pwsh']) {
-    const result = spawnSync(command, ['-NoProfile', '-Command', '$PSVersionTable.PSVersion.ToString()'], {
+    const result = spawnSync(command, ['-NoProfile', '-Command', probe], {
       encoding: 'utf8',
     });
     if (!result.error && result.status === 0) return command;
@@ -28,9 +31,9 @@ describe('install.ps1', () => {
     expect(source).not.toMatch(/Set-ExecutionPolicy/i);
   });
 
-  it('parses in Windows PowerShell when available', () => {
-    const command = windowsPowerShell();
-    if (!command) return;
+  it('parses in PowerShell when available', (context) => {
+    const command = powerShell();
+    if (!command) context.skip('PowerShell is not available');
 
     const result = spawnSync(command, [
       '-NoProfile',
@@ -47,9 +50,11 @@ describe('install.ps1', () => {
     expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
   });
 
-  it('lets bare komado resolve to the cmd shim under Restricted policy', () => {
-    const command = windowsPowerShell();
-    if (!command) return;
+  it('lets bare komado resolve to the cmd shim under Restricted policy', (context) => {
+    // Ubuntu runners also ship pwsh, but Restricted policy and .cmd launchers
+    // are Windows behavior. Keep the parser check above cross-platform.
+    const command = powerShell({ windowsOnly: true });
+    if (!command) context.skip('Windows PowerShell host is not available');
 
     const script = [
       '$ErrorActionPreference="Stop"',

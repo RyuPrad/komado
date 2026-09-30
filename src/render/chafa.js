@@ -5,6 +5,7 @@ import path from 'node:path';
 import sharp from 'sharp';
 import { paths } from '../config.js';
 import { detectCapabilities } from './detect.js';
+import { orientedSize } from './geometry.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -32,12 +33,20 @@ async function withTempImage(buffer, fn) {
 // Cell-based symbol output (truecolor ANSI). Compatible with Ink's <Text>
 // layout, so the reader can scroll it like the half-block output. We size the
 // box to the image's natural aspect to avoid chafa padding the result.
-export async function renderChafaSymbols(buffer, { cols = 80 } = {}) {
+export async function renderChafaSymbols(buffer, { cols = 80, maxRows } = {}) {
   const meta = await sharp(buffer).metadata();
-  const aspect = (meta.height || 1) / (meta.width || 1);
-  const rows = Math.max(1, Math.round((aspect * cols) / 2)); // cells are ~2x tall
+  const { width, height } = orientedSize(meta);
+  const aspect = height / width;
+  cols = Math.max(1, Math.floor(cols));
+  const naturalRows = Math.max(1, Math.round((aspect * cols) / 2)); // cells are ~2x tall
+  const rows = maxRows > 0 ? Math.min(naturalRows, Math.max(1, Math.floor(maxRows))) : naturalRows;
+  // Normalize before chafa so decoder-specific EXIF handling cannot disagree
+  // with our fit geometry. The PNG has no orientation tag to apply twice.
+  const image = meta.orientation >= 2 && meta.orientation <= 8
+    ? await sharp(buffer).rotate().png().toBuffer()
+    : buffer;
 
-  const stdout = await withTempImage(buffer, (file) =>
+  const stdout = await withTempImage(image, (file) =>
     execFileAsync(
       'chafa',
       ['--format', 'symbols', '--colors', 'full', '--size', `${cols}x${rows}`, file],

@@ -7,12 +7,15 @@ const mocks = vi.hoisted(() => ({
   loadPageBuffer: vi.fn(),
   renderInline: vi.fn(),
   setProgress: vi.fn(),
+  syncChapterRead: vi.fn(),
+  imageSize: vi.fn(),
 }));
 
 vi.mock('../src/sources/index.js', () => ({
   getSource: () => ({
     getPages: (...args) => mocks.getPages(...args),
     loadPageBuffer: (...args) => mocks.loadPageBuffer(...args),
+    syncChapterRead: (...args) => mocks.syncChapterRead(...args),
   }),
 }));
 vi.mock('../src/state/store.js', () => ({
@@ -21,7 +24,7 @@ vi.mock('../src/state/store.js', () => ({
 }));
 vi.mock('../src/render/image.js', () => ({
   renderInline: (...args) => mocks.renderInline(...args),
-  imageSize: vi.fn(),
+  imageSize: (...args) => mocks.imageSize(...args),
 }));
 vi.mock('../src/render/detect.js', () => ({
   pickInlineBackend: () => 'halfblock',
@@ -72,9 +75,87 @@ beforeEach(() => {
     lines: [`rendered-${buf.toString()}`],
   }));
   mocks.setProgress.mockReset();
+  mocks.syncChapterRead.mockReset();
+  mocks.imageSize.mockReset().mockResolvedValue({ width: 800, height: 10000 });
 });
 
 describe('ReaderScreen prefetch', () => {
+  it('does not save or complete a final page before its output is ready', async () => {
+    const pageB = deferred();
+    mocks.loadPageBuffer.mockImplementation((page) => (
+      page.index === 0 ? Promise.resolve(Buffer.from('A')) : pageB.promise
+    ));
+    const { lastFrame, stdin, unmount } = renderReader();
+    try {
+      await waitFor(() => lastFrame().includes('rendered-A'));
+      stdin.write('l');
+      await waitFor(() => lastFrame().includes('Rendering page 2'));
+      expect(mocks.setProgress.mock.calls.map(([, entry]) => entry.page)).toEqual([0]);
+      expect(mocks.syncChapterRead).not.toHaveBeenCalled();
+
+      pageB.reject(new Error('page two failed'));
+      await waitFor(() => lastFrame().includes('page two failed'));
+      expect(mocks.setProgress.mock.calls.map(([, entry]) => entry.page)).toEqual([0]);
+      expect(mocks.syncChapterRead).not.toHaveBeenCalled();
+    } finally {
+      unmount();
+    }
+  });
+
+  it('saves progress when returning to a completed cached page', async () => {
+    mocks.loadPageBuffer.mockImplementation(async (page) => Buffer.from(page.index ? 'B' : 'A'));
+    const { lastFrame, stdin, unmount } = renderReader();
+    try {
+      await waitFor(() => lastFrame().includes('rendered-A'));
+      await waitFor(() => mocks.renderInline.mock.calls.some(([buffer]) => buffer.toString() === 'B'));
+      stdin.write('l');
+      await waitFor(() => lastFrame().includes('rendered-B'));
+      stdin.write('h');
+      await waitFor(() => lastFrame().includes('rendered-A'));
+      await waitFor(() => mocks.setProgress.mock.calls.length === 3);
+      expect(mocks.setProgress.mock.calls.map(([, entry]) => entry.page)).toEqual([0, 1, 0]);
+      expect(mocks.loadPageBuffer).toHaveBeenCalledTimes(2);
+      expect(mocks.syncChapterRead).toHaveBeenCalledWith('m1', 'c1');
+    } finally {
+      unmount();
+    }
+  });
+
+  it('reports empty chapters and can advance to a chapter with pages', async () => {
+    mocks.getPages.mockImplementation(async (id) => id === 'c1' ? [] : [{ index: 0 }]);
+    mocks.loadPageBuffer.mockResolvedValue(Buffer.from('A'));
+    const { lastFrame, stdin, unmount } = renderReader({
+      ...params,
+      chapters: [...params.chapters, { id: 'c2', number: '2' }],
+    });
+    try {
+      await waitFor(() => lastFrame().includes('This chapter has no pages.'));
+      expect(lastFrame()).not.toContain('1/0');
+      expect(mocks.setProgress).not.toHaveBeenCalled();
+      expect(mocks.syncChapterRead).not.toHaveBeenCalled();
+      stdin.write('n');
+      await waitFor(() => lastFrame().includes('rendered-A'));
+      await waitFor(() => mocks.setProgress.mock.calls.length > 0);
+      expect(mocks.setProgress.mock.calls.map(([, entry]) => entry.chapterId)).toEqual(['c2']);
+    } finally {
+      unmount();
+    }
+  });
+
+  it('fits tall pages with a one-column minimum and a backend height limit', async () => {
+    mocks.loadPageBuffer.mockResolvedValue(Buffer.from('A'));
+    const { lastFrame, stdin, unmount } = renderReader();
+    try {
+      await waitFor(() => lastFrame().includes('rendered-A'));
+      stdin.write('f');
+      await waitFor(() => mocks.renderInline.mock.calls.some(([, options]) => options.maxRows === 20));
+      const fitCalls = mocks.renderInline.mock.calls.filter(([, options]) => options.maxRows === 20);
+      expect(fitCalls.every(([, options]) => options.cols === 3)).toBe(true);
+    } finally {
+      unmount();
+    }
+  });
+
   it('joins an in-flight prefetched render when the user reaches that page', async () => {
     const pageB = deferred();
     mocks.loadPageBuffer.mockImplementation((page) => (
@@ -87,13 +168,14 @@ describe('ReaderScreen prefetch', () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
     pageB.resolve(Buffer.from('B'));
     await waitFor(() => lastFrame().includes('rendered-B'));
+    const readyFrame = lastFrame();
     unmount();
 
     const pageBLoads = mocks.loadPageBuffer.mock.calls.filter(([page]) => page.index === 1);
     const pageBRenders = mocks.renderInline.mock.calls.filter(([buf]) => buf.toString() === 'B');
     expect(pageBLoads).toHaveLength(1);
     expect(pageBRenders).toHaveLength(1);
-    expect(lastFrame()).toMatch(/\b2\/2\b/);
+    expect(readyFrame).toMatch(/\b2\/2\b/);
   });
 
   it('evicts a rejected prefetch so the foreground render can retry', async () => {
@@ -111,10 +193,11 @@ describe('ReaderScreen prefetch', () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
     stdin.write('l');
     await waitFor(() => lastFrame().includes('rendered-B-retry'));
+    const readyFrame = lastFrame();
     unmount();
 
     expect(pageBAttempts).toBe(2);
-    expect(lastFrame()).toMatch(/\b2\/2\b/);
+    expect(readyFrame).toMatch(/\b2\/2\b/);
   });
 
   it('never keys old descriptors as the new chapter during a chapter change', async () => {
@@ -144,9 +227,10 @@ describe('ReaderScreen prefetch', () => {
 
     nextChapter.resolve(newPages);
     await waitFor(() => lastFrame().includes('rendered-new-0'));
+    const readyFrame = lastFrame();
     unmount();
 
-    expect(lastFrame()).toMatch(/Ch\. 2/);
-    expect(lastFrame()).not.toContain('rendered-old-0');
+    expect(readyFrame).toMatch(/Ch\. 2/);
+    expect(readyFrame).not.toContain('rendered-old-0');
   });
 });

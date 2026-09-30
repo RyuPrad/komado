@@ -44,6 +44,7 @@ export async function encodePixels(buffer, { format = 'sixel', colors } = {}) {
 export async function scalePage(buffer, { cols, cellW }) {
   const viewW = Math.max(1, Math.round(cols * (cellW || DEFAULT_CELL_W)));
   const { data, info } = await sharp(buffer)
+    .rotate() // honor EXIF before resize; generated PNGs no longer carry orientation
     .resize({ width: viewW })
     .png()
     .toBuffer({ resolveWithObject: true }); // dims come with the encode - no second decode
@@ -65,10 +66,11 @@ export async function prepareImage(buffer, { mode, cols, rows, scroll = 0, cellW
 
   if (mode === 'fit') {
     const { data, info } = await sharp(buffer)
+      .rotate()
       .resize({ width: viewW, height: viewH, fit: 'inside', withoutEnlargement: false })
       .png()
       .toBuffer({ resolveWithObject: true });
-    return { buffer: data, maxScroll: 0, scroll: 0, imageRows: Math.round((info.height || viewH) / ch) };
+    return { buffer: data, maxScroll: 0, scroll: 0, imageRows: Math.ceil((info.height || viewH) / ch) };
   }
 
   // mode 'width': scale to full width (reuse `scaled` when scrolling), then
@@ -86,7 +88,7 @@ export async function prepareImage(buffer, { mode, cols, rows, scroll = 0, cellW
     .extract({ left: 0, top: Math.round(top), width: page.width, height: Math.round(cropH) })
     .png()
     .toBuffer();
-  return { buffer: out, maxScroll, scroll: clamped, imageRows: Math.round(cropH / ch) };
+  return { buffer: out, maxScroll, scroll: clamped, imageRows: Math.ceil(Math.round(cropH) / ch) };
 }
 
 // ---- Sliceable sixel page (smooth vertical scrolling) ----------------------
@@ -145,7 +147,8 @@ export async function encodeSixelPage(buffer, { colors } = {}) {
 
 // Compose a complete sixel image from a band window (sub-millisecond). Pv is
 // rewritten to the window height; the palette/intro are reused verbatim.
-// Returns { sixel: Buffer, startBand, bands } (startBand clamped to range).
+// Returns { sixel: Buffer, startBand, bands, numBands, height }. `bands` remains
+// the total page length; numBands/height describe the actual clamped window.
 export function sliceSixelPage(page, { startBand, numBands }) {
   const total = page.bands.length;
   const k = Math.max(1, Math.min(numBands, total));
@@ -153,5 +156,5 @@ export function sliceSixelPage(page, { startBand, numBands }) {
   const body = page.bands.slice(start, start + k).join('-');
   const r = page.raster;
   const str = `${page.intro}"${r.pan};${r.pad};${r.ph};${k * BAND_PX}${page.palette}${body}\x1b\\`;
-  return { sixel: Buffer.from(str, 'latin1'), startBand: start, bands: total };
+  return { sixel: Buffer.from(str, 'latin1'), startBand: start, bands: total, numBands: k, height: k * BAND_PX };
 }

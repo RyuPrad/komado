@@ -16,6 +16,11 @@ const tokenResponse = (over = {}) => new Response(
   { status: 200, headers: { 'content-type': 'application/json' } },
 );
 const creds = { clientId: 'c', clientSecret: 's', username: 'u', password: 'p' };
+function deferred() {
+  let resolve;
+  const promise = new Promise((r) => { resolve = r; });
+  return { promise, resolve };
+}
 
 beforeEach(() => { store.creds = null; logout(); });
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
@@ -103,5 +108,107 @@ describe('mangadex auth', () => {
     await login(creds);
     await expect(getAccessToken()).rejects.toThrow();
     expect(isLoggedIn()).toBe(true); // NOT logged out - transient failure
+  });
+
+  it('does not restore credentials when a refresh finishes after logout', async () => {
+    const response = deferred();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(tokenResponse({ expires_in: -100 }))
+      .mockImplementationOnce(() => response.promise);
+    vi.stubGlobal('fetch', fetchMock);
+    await login(creds);
+    const oldRefresh = getAccessToken();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    logout();
+    response.resolve(tokenResponse({ access_token: 'obsolete', refresh_token: 'obsolete-RT' }));
+    expect(await oldRefresh).toBeNull();
+    expect(isLoggedIn()).toBe(false);
+    expect(await getAccessToken()).toBeNull();
+  });
+
+  it('does not let an old refresh failure log out a new account', async () => {
+    const response = deferred();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(tokenResponse({ expires_in: -100 }))
+      .mockImplementationOnce(() => response.promise)
+      .mockResolvedValueOnce(tokenResponse({ access_token: 'B', refresh_token: 'B-RT' }));
+    vi.stubGlobal('fetch', fetchMock);
+    await login(creds);
+    const oldRefresh = getAccessToken();
+    const rejected = expect(oldRefresh).rejects.toMatchObject({ oauthError: 'invalid_grant' });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await login({ ...creds, clientId: 'B-client' });
+    response.resolve(new Response('{"error":"invalid_grant"}', { status: 401 }));
+    await rejected;
+    expect(isLoggedIn()).toBe(true);
+    expect(await getAccessToken()).toBe('B');
+    expect(store.creds).toMatchObject({ clientId: 'B-client', refreshToken: 'B-RT' });
+  });
+
+  it('keeps a new account refresh joinable when an obsolete refresh settles', async () => {
+    const oldResponse = deferred();
+    const newResponse = deferred();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(tokenResponse({ expires_in: -100 }))
+      .mockImplementationOnce(() => oldResponse.promise)
+      .mockResolvedValueOnce(tokenResponse({ access_token: 'B', expires_in: -100 }))
+      .mockImplementationOnce(() => newResponse.promise);
+    vi.stubGlobal('fetch', fetchMock);
+    await login(creds);
+    const oldRefresh = getAccessToken();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await login({ ...creds, clientId: 'B-client' });
+    const newRefresh = getAccessToken();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    oldResponse.resolve(tokenResponse({ access_token: 'obsolete' }));
+    expect(await oldRefresh).toBeNull();
+    const joined = getAccessToken();
+    newResponse.resolve(tokenResponse({ access_token: 'B2', refresh_token: 'B2-RT' }));
+    expect(await Promise.all([newRefresh, joined])).toEqual(['B2', 'B2']);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(store.creds.refreshToken).toBe('B2-RT');
+  });
+
+  it('persists refresh rotation even when the first waiting screen cancels', async () => {
+    const response = deferred();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(tokenResponse({ expires_in: -100 }))
+      .mockImplementationOnce(() => response.promise);
+    vi.stubGlobal('fetch', fetchMock);
+    await login(creds);
+    const ctrl = new AbortController();
+    const cancelled = getAccessToken({ signal: ctrl.signal });
+    const active = getAccessToken();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    ctrl.abort();
+    await expect(cancelled).rejects.toMatchObject({ name: 'AbortError' });
+    expect(fetchMock.mock.calls[1][1].signal.aborted).toBe(false);
+    response.resolve(tokenResponse({ access_token: 'rotated', refresh_token: 'rotated-RT' }));
+    expect(await active).toBe('rotated');
+    expect(store.creds.refreshToken).toBe('rotated-RT');
+  });
+
+  it('does not save a successful but cancelled login response', async () => {
+    const response = deferred();
+    vi.stubGlobal('fetch', vi.fn(() => response.promise));
+    const ctrl = new AbortController();
+    const pending = login(creds, { signal: ctrl.signal });
+    ctrl.abort();
+    response.resolve(tokenResponse());
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    expect(isLoggedIn()).toBe(false);
+  });
+
+  it('does not save a superseded login over a newer login', async () => {
+    const oldResponse = deferred();
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(() => oldResponse.promise)
+      .mockResolvedValueOnce(tokenResponse({ access_token: 'B', refresh_token: 'B-RT' }));
+    vi.stubGlobal('fetch', fetchMock);
+    const oldLogin = login(creds);
+    await login({ ...creds, clientId: 'B-client' });
+    oldResponse.resolve(tokenResponse());
+    await expect(oldLogin).rejects.toMatchObject({ name: 'AbortError' });
+    expect(store.creds).toMatchObject({ clientId: 'B-client', refreshToken: 'B-RT' });
   });
 });

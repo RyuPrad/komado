@@ -11,7 +11,9 @@ vi.mock('../src/sources/mangadex/client.js', () => ({
   mdGet: (...a) => mocks.mdGet(...a),
   mdSend: vi.fn(),
 }));
-vi.mock('../src/sources/mangadex/auth.js', () => ({ isLoggedIn: () => false }));
+vi.mock('../src/sources/mangadex/auth.js', () => ({
+  isLoggedIn: () => false, getSessionGeneration: () => 0,
+}));
 vi.mock('../src/state/store.js', () => ({ getConfig: () => mocks.config }));
 vi.mock('../src/lib/fetchWithBackoff.js', () => ({
   fetchWithBackoff: (...a) => mocks.fetch(...a),

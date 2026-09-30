@@ -38,4 +38,30 @@ describe('createCache', () => {
     await c.wrap('k', fn);
     expect(fn).toHaveBeenCalledTimes(1);
   });
+
+  it('cancels one caller without cancelling another caller or the cache fill', async () => {
+    const c = createCache();
+    let resolve;
+    const fn = vi.fn(() => new Promise((r) => { resolve = r; }));
+    const ctrl = new AbortController();
+    const first = c.wrap('shared', fn, undefined, { signal: ctrl.signal });
+    const second = c.wrap('shared', fn);
+    await Promise.resolve();
+    ctrl.abort();
+    await expect(first).rejects.toMatchObject({ name: 'AbortError' });
+    resolve(42);
+    expect(await second).toBe(42);
+    expect(await c.wrap('shared', fn)).toBe(42);
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not start a load for an already cancelled caller', async () => {
+    const c = createCache();
+    const ctrl = new AbortController();
+    ctrl.abort();
+    const fn = vi.fn();
+    await expect(c.wrap('unused', fn, undefined, { signal: ctrl.signal }))
+      .rejects.toMatchObject({ name: 'AbortError' });
+    expect(fn).not.toHaveBeenCalled();
+  });
 });

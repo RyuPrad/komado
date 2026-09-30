@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { renderStatusBar, hintLine } from '../src/render/statusbar.js';
-import { displayWidth, truncateWidth } from '../src/lib/text.js';
+import { displayWidth, truncateWidth, sanitizeTerminalText } from '../src/lib/text.js';
 
 // eslint-disable-next-line no-control-regex
 const plain = (s) => s.replace(/\x1b\[[0-9;]*m/g, '');
@@ -33,6 +33,14 @@ describe('displayWidth / truncateWidth', () => {
     expect(truncateWidth('abcdef', 4)).toBe('abc…');
     expect(truncateWidth('ベルセルク', 5)).toBe('ベル…');
     expect(truncateWidth('ベルセルク', 4)).toBe('ベ…'); // ル won't fit in 3 cells
+  });
+});
+
+describe('sanitizeTerminalText', () => {
+  it('normalizes controls and line separators without changing Unicode text', () => {
+    expect(sanitizeTerminalText('Volume\n\t\r1\x00\x7f\x90bonus\u2028\u2029ベルセルク é'))
+      .toBe('Volume 1 bonus ベルセルク é');
+    expect(sanitizeTerminalText(undefined)).toBe('');
   });
 });
 
@@ -94,6 +102,19 @@ describe('renderStatusBar', () => {
     expect(p).toContain(' 1/? ');
     expect(displayWidth(p)).toBe(120);
   });
+
+  it('keeps external controls out of the fixed-row status bar', () => {
+    const p = plain(bar({
+      title: 'Volume\n\t1\x1b[2J',
+      info: 'Ch.\r\n1\x90title',
+      page: '1/2\u2028',
+      hints: [{ keys: 'q\x1b', label: 'back\x9b' }],
+    }));
+    expect(displayWidth(p)).toBe(120);
+    // eslint-disable-next-line no-control-regex
+    expect(p).not.toMatch(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/);
+    expect(p).toContain('Volume 1 [2J');
+  });
 });
 
 describe('hintLine', () => {
@@ -103,5 +124,9 @@ describe('hintLine', () => {
     expect(out).toContain('\x1b[0;1mn/p');
     expect(out).toContain('\x1b[0;2m chapter');
     expect(out.endsWith('\x1b[0m')).toBe(true);
+  });
+
+  it('sanitizes hint text while retaining its own style sequences', () => {
+    expect(plain(hintLine([{ keys: 'q\n', label: 'back\x1b' }]))).toBe('q  back ');
   });
 });

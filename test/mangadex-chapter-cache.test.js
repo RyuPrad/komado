@@ -9,7 +9,9 @@ vi.mock('../src/sources/mangadex/client.js', () => ({
   mdGet: (...args) => mocks.mdGet(...args),
   mdSend: vi.fn(),
 }));
-vi.mock('../src/sources/mangadex/auth.js', () => ({ isLoggedIn: () => false }));
+vi.mock('../src/sources/mangadex/auth.js', () => ({
+  isLoggedIn: () => false, getSessionGeneration: () => 0,
+}));
 vi.mock('../src/state/store.js', () => ({ getConfig: () => mocks.config }));
 
 const md = await import('../src/sources/mangadex/index.js');
@@ -40,5 +42,20 @@ describe('MangaDex chapter cache ratings', () => {
 
     expect(mocks.mdGet).toHaveBeenCalledTimes(1);
     expect(mocks.mdGet.mock.calls[0][1].contentRating).toEqual(['safe', 'suggestive']);
+  });
+
+  it('keeps an active source caller alive when the first screen cancels', async () => {
+    let resolve;
+    mocks.mdGet.mockImplementation(() => new Promise((r) => { resolve = r; }));
+    const ctrl = new AbortController();
+    const oldScreen = md.listChapters('cancel-and-reopen', { signal: ctrl.signal });
+    const currentScreen = md.listChapters('cancel-and-reopen');
+    await vi.waitFor(() => expect(mocks.mdGet).toHaveBeenCalledTimes(1));
+    ctrl.abort();
+    await expect(oldScreen).rejects.toMatchObject({ name: 'AbortError' });
+    resolve(emptyFeed());
+    await expect(currentScreen).resolves.toMatchObject({ data: [] });
+    await expect(md.listChapters('cancel-and-reopen')).resolves.toMatchObject({ data: [] });
+    expect(mocks.mdGet).toHaveBeenCalledTimes(1);
   });
 });
