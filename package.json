@@ -43,7 +43,7 @@
   "homepage": "https://github.com/RyuPrad/komado#readme",
   "bugs": "https://github.com/RyuPrad/komado/issues",
   "dependencies": {
-    "adm-zip": "^0.5.16",
+    "adm-zip": "^0.6.1",
     "ink": "^5.1.0",
     "ink-text-input": "^6.0.0",
     "node-unrar-js": "^2.0.2",
