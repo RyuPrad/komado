@@ -17,6 +17,7 @@ export const paths = {
   progressFile: path.join(HOME, 'progress.json'),
   credentialsFile: path.join(HOME, 'credentials.json'),
   cacheDir: path.join(HOME, 'cache'),
+  pageCacheDir: path.join(HOME, 'cache', 'pages'), // kept apart from the renderer's temp files
   logFile: path.join(HOME, 'komado.log'),
 };
 
@@ -38,6 +39,7 @@ export const DEFAULT_CONFIG = {
   renderer: 'auto',        // auto | halfblock | chafa
   theme: 'default',
   syncProgress: true,      // push read-markers to MangaDex while logged in
+  pageCacheMB: 512,        // on-disk cache of downloaded MangaDex pages; 0 = off
 };
 
 export const MANGADEX = {

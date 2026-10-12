@@ -15,6 +15,7 @@ vi.mock('../src/sources/mangadex/auth.js', () => ({
   isLoggedIn: () => false, getSessionGeneration: () => 0,
 }));
 vi.mock('../src/state/store.js', () => ({ getConfig: () => mocks.config }));
+vi.mock('../src/state/pageCache.js', () => ({ readCachedPage: async () => null, writeCachedPage: () => {} }));
 vi.mock('../src/lib/fetchWithBackoff.js', () => ({
   fetchWithBackoff: (...a) => mocks.fetch(...a),
   fetchJson: vi.fn(),

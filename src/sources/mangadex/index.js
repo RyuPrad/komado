@@ -8,6 +8,7 @@ import { NotFoundError } from '../../lib/AppError.js';
 import { MANGADEX } from '../../config.js';
 import { globalKey } from '../../domain/shape.js';
 import { getConfig } from '../../state/store.js';
+import { readCachedPage, writeCachedPage } from '../../state/pageCache.js';
 import { logger } from '../../lib/logger.js';
 
 export const id = 'mangadex';
@@ -115,10 +116,15 @@ export async function getPages(chapterId, { signal, fresh = false } = {}) {
     index,
     chapterId,
     url: `${server.baseUrl}/${mode}/${server.chapter.hash}/${file}`,
+    // Names the image itself for the disk cache. The at-home baseUrl (and its
+    // token) changes per handout, so it must not be part of the key.
+    cacheKey: `mangadex/${mode}/${server.chapter.hash}/${file}`,
   }));
 }
 
 export async function loadPageBuffer(page, { signal } = {}) {
+  const cached = await readCachedPage(page.cacheKey);
+  if (cached) return cached;
   const fetchPage = (url) => fetchWithBackoff(url, {
     headers: { 'User-Agent': MANGADEX.userAgent },
     timeoutMs: 30_000,
@@ -135,7 +141,9 @@ export async function loadPageBuffer(page, { signal } = {}) {
     if (retry) res = await fetchPage(retry.url);
   }
   if (!res.ok) throw new NotFoundError(`Failed to load page ${page.index} (${res.status})`);
-  return Buffer.from(await res.arrayBuffer());
+  const buf = Buffer.from(await res.arrayBuffer());
+  writeCachedPage(page.cacheKey, buf); // best effort, off the reading path
+  return buf;
 }
 
 // ---- Authenticated features (require login) ----------------------------

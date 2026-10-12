@@ -27,7 +27,7 @@ export function uninstallTargets() {
   return [
     { label: 'application files', path: appDir() },
     { label: 'launcher', path: launcherFile() },
-    { label: 'config, reading progress & MangaDex login', path: paths.home },
+    { label: 'config, reading progress, MangaDex login & page cache', path: paths.home },
   ];
 }
 

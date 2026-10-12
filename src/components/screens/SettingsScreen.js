@@ -11,6 +11,7 @@ import { Header, KeyHints, ResizeHint } from '../ui.js';
 import { displayWidth, truncateWidth, sanitizeTerminalText } from '../../lib/text.js';
 import { getInkViewport, isInkViewportUsable } from '../../lib/layout.js';
 import { performUninstall, uninstallTargets, displayPath, formatUninstallSummary } from '../../uninstall.js';
+import { pageCacheStats, sweepPageCache, clearPageCache } from '../../state/pageCache.js';
 
 const RATING_PRESETS = [
   ['safe'],
@@ -20,6 +21,13 @@ const RATING_PRESETS = [
 ];
 const ratingLabel = (arr) => arr.join('+');
 const cycle = (list, current) => list[(list.indexOf(current) + 1) % list.length];
+// Page cache sizes in MB (0 = off). Cycling through "off" only stops using the
+// cache; deleting it is the explicit Clear row, so a resize never wipes it. A
+// hand-edited size moves on to the next preset above it.
+const PAGE_CACHE_SIZES = [0, 256, 512, 1024, 2048];
+const nextCacheSize = (mb) => PAGE_CACHE_SIZES.find((s) => s > mb) ?? 0;
+const formatMB = (bytes) => `${(bytes / (1024 * 1024)).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`;
+const measureCache = () => pageCacheStats().then(({ bytes }) => bytes);
 
 export function SettingsScreen() {
   const ui = useUI();
@@ -34,6 +42,7 @@ export function SettingsScreen() {
   const [draft, setDraft] = useState('');
   const [highlighted, setHighlighted] = useState(null);
   const [, setTick] = useState(0); // force a re-render after login/logout
+  const [cacheBytes, setCacheBytes] = useState(null); // null until measured
 
   const loggedIn = isLoggedIn();
 
@@ -41,6 +50,12 @@ export function SettingsScreen() {
     ui.setTyping(!!editing);
     return () => ui.setTyping(false);
   }, [editing]);
+
+  useEffect(() => {
+    let live = true;
+    measureCache().then((bytes) => { if (live) setCacheBytes(bytes); }).catch(() => {});
+    return () => { live = false; };
+  }, []);
 
   const save = (patch) => setCfg({ ...setConfig(patch) });
 
@@ -50,6 +65,9 @@ export function SettingsScreen() {
     ...(loggedIn ? [{ id: 'syncProgress', kind: 'toggle', label: 'Sync reading progress (MangaDex)', value: cfg.syncProgress ? 'on' : 'off' }] : []),
     { id: 'renderer', kind: 'cycle', label: 'Renderer', value: cfg.renderer + (caps.chafa ? '' : ' (chafa N/A)') },
     { id: 'dataSaver', kind: 'toggle', label: 'Data saver (smaller images)', value: cfg.dataSaver ? 'on' : 'off' },
+    { id: 'pageCache', kind: 'cycle', label: 'Page cache (MangaDex, on disk)', value: cfg.pageCacheMB > 0 ? `${cfg.pageCacheMB} MB` : 'off' },
+    { id: 'clearPageCache', kind: 'clear', label: 'Clear page cache',
+      value: cacheBytes === null ? '' : `${formatMB(cacheBytes)} used` },
     { id: 'rating', kind: 'cycle', label: 'Content rating', value: ratingLabel(cfg.contentRating) },
     { id: 'language', kind: 'edit', label: 'Language (MangaDex)', value: cfg.language },
     { id: 'addPath', kind: 'action', label: 'Add library path…', value: '' },
@@ -73,7 +91,17 @@ export function SettingsScreen() {
           const idx = RATING_PRESETS.findIndex((p) => ratingLabel(p) === ratingLabel(cfg.contentRating));
           return save({ contentRating: RATING_PRESETS[(idx + 1) % RATING_PRESETS.length] });
         }
+        if (item.id === 'pageCache') {
+          const next = nextCacheSize(cfg.pageCacheMB);
+          save({ pageCacheMB: next });
+          if (next > 0) { // a smaller cap applies right away
+            sweepPageCache().then(measureCache).then(setCacheBytes).catch(() => {});
+          }
+        }
         return undefined;
+      case 'clear':
+        clearPageCache();
+        return setCacheBytes(0);
       case 'edit':
         setDraft(cfg.language);
         return setEditing('language');

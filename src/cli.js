@@ -91,6 +91,10 @@ async function doctor() {
   console.log(`  renderer:          ${cfg.renderer}`);
   console.log(`  contentRating:     ${cfg.contentRating.join(', ')}`);
   console.log(`  localLibraryPaths: ${cfg.localLibraryPaths.length ? cfg.localLibraryPaths.join(', ') : '(none - add in Settings)'}`);
+  const { pageCacheStats } = await import('./state/pageCache.js');
+  const cache = await pageCacheStats();
+  const used = `${cache.files} pages, ${(cache.bytes / (1024 * 1024)).toFixed(1)} MB`;
+  console.log(`  pageCacheMB:       ${cfg.pageCacheMB > 0 ? cfg.pageCacheMB : '0 (off)'}  (${used} in ${paths.pageCacheDir})`);
 }
 
 async function renderCmd(target, rest) {

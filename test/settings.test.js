@@ -50,6 +50,21 @@ describe('SettingsScreen', () => {
     expect(frame).toContain('Settings');
   });
 
+  it('shows the page cache size and how much of it is in use', async () => {
+    const { lastFrame, unmount } = render(
+      <UIContext.Provider value={ctx}>
+        <SettingsScreen />
+      </UIContext.Provider>,
+    );
+    try {
+      await sleep(150);
+      expect(lastFrame()).toMatch(/Page cache \(MangaDex, on disk\)\s+512 MB/);
+      expect(lastFrame()).toMatch(/Clear page cache\s+\d+(\.\d)? MB used/);
+    } finally {
+      unmount();
+    }
+  });
+
   it('shows the type-to-confirm prompt when Uninstall is selected', async () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { lastFrame, stdin, unmount } = render(

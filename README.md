@@ -26,6 +26,9 @@ with [Ink](https://github.com/vadimdemedes/ink).
 - **Reader UX.** Vertical scroll for tall pages, page/chapter navigation, fit-to-screen
   toggle, runtime renderer switching, and prefetch of the next page - on a chapter's
   last page, the next chapter's first page.
+- **Page cache.** MangaDex pages you've read are kept on disk (512 MB by default,
+  least recently read evicted first), so re-reading a chapter doesn't download it
+  again. Change the size, turn it off, or clear it in **Settings**.
 - **Reading progress.** Where you left off is saved per manga and resumable from
   *Continue reading*.
 - **Sign in to MangaDex (optional).** Log in to browse your **followed library**, see
@@ -89,7 +92,7 @@ this instead of crashing). `type -a komado` shows which copy runs first.
 
 Uninstall from inside the app - **Settings → Uninstall komado…** (type `uninstall` to
 confirm) - removes the app, its launcher, and `~/.komado` (config, reading progress,
-MangaDex login). By hand that's
+MangaDex login, page cache). By hand that's
 `rm -rf ~/.local/share/komado ~/.local/bin/komado ~/.komado`.
 
 ### From source (for development)
@@ -190,6 +193,7 @@ Everything is self-contained under `~/.komado/` (override with `KOMADO_HOME`):
 - `config.json` - preferences + library paths
 - `progress.json` - reading progress
 - `credentials.json` - MangaDex login (client id/secret + refresh token; mode `600`)
+- `cache/pages/` - downloaded MangaDex pages (the page cache; safe to delete)
 - `cache/` - scratch space for the renderer
 
 ## Architecture
@@ -235,7 +239,6 @@ automatically where the `rar` binary isn't available.
 ## Roadmap
 
 - True sixel/kitty fullscreen page view (beyond the standalone `render` command)
-- On-disk page cache for offline re-reads of MangaDex chapters
 
 ## Legal
 

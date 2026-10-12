@@ -19,6 +19,7 @@ export function disablePersistence() {
   persistenceDisabled = true;
   clearTimeout(saveTimer);
 }
+export const isPersistenceDisabled = () => persistenceDisabled;
 
 // Write-to-temp + rename so a crash mid-write never corrupts the file.
 function writeJsonAtomic(file, data) {
