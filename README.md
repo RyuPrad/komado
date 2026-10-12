@@ -36,9 +36,17 @@ with [Ink](https://github.com/vadimdemedes/ink).
   marks it read on MangaDex. Reading itself needs no account.
 - **Offline-friendly.** Point it at folders of `.cbz`/`.zip` or loose images.
 
+## For developers
+
+- Read a chapter while CI runs.
+- Manga for people who never close their terminal.
+- Keyboard-first: `j`/`k` to scroll, `g`/`G` to jump to the top or bottom, `←`/`→` to
+  turn pages. No mouse needed, though the wheel scrolls in the pixel viewer.
+- `npm i -g komado`, and the next chapter is a keystroke away.
+
 ## Requirements
 
-- Node.js **≥ 20** (developed on Node 22).
+- Node.js **≥ 20.9** (developed on Node 22).
 - A 24-bit-color terminal (most modern ones).
 - Optional but recommended: **`chafa`** for higher-fidelity rendering.
   - Debian/Ubuntu: `sudo apt install chafa` · macOS: `brew install chafa`
