@@ -64,6 +64,18 @@ Then just type **`komado`**. Re-run that same command any time to update. It nee
 `git`, **Node ≥ 20.9**, and `npm`; it installs to `~/.local/share/komado` with the
 launcher in `~/.local/bin` (override via `KOMADO_APP_DIR` / `KOMADO_BIN_DIR`).
 
+**npm (any platform)** - komado is also published on
+[npm](https://www.npmjs.com/package/komado). With **Node ≥ 20.9** installed:
+
+```bash
+npm i -g komado            # install, then run `komado`
+npm i -g komado@latest     # update
+npm uninstall -g komado    # remove (your ~/.komado data stays)
+```
+
+Depending on how Node was installed, a global install may need `sudo` on Linux. In
+Windows PowerShell, see the `npm.cmd` note below.
+
 **Windows** - one line installs Node.js for you (via `winget`) if it's missing,
 then komado, leaving a native `komado` command on your `PATH`. It works from
 **both CMD and PowerShell**, including machines where PowerShell script execution
