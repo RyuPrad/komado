@@ -72,14 +72,15 @@ export function ReaderScreen({ params }) {
     };
   }, [chapter?.id]);
 
-  const cacheKeyFor = (idx) =>
-    `${chapter?.id}:${idx}:${cols}:${viewportRows}:${backend}:${fitMode ? 'fit' : 'scroll'}`;
+  const cacheKeyFor = (idx, chapterId = chapter?.id) =>
+    `${chapterId}:${idx}:${cols}:${viewportRows}:${backend}:${fitMode ? 'fit' : 'scroll'}`;
   const currentRenderKey = cacheKeyFor(pageIndex);
 
-  // Load + render one page into the cache, returning its lines.
-  const renderPage = async (idx, signal) => {
-    const key = cacheKeyFor(idx);
-    const descriptor = pages[idx];
+  // Load + render one page into the cache, returning its lines. Defaults to the
+  // current chapter; the cross-chapter prefetch passes the next chapter's id with
+  // a descriptor from that chapter's own page list.
+  const renderPage = async (idx, signal, { chapterId = chapter.id, descriptor = pages[idx] } = {}) => {
+    const key = cacheKeyFor(idx, chapterId);
     if (renderCache.current.has(key)) return renderCache.current.get(key);
     if (rendersInFlight.current.has(key)) return rendersInFlight.current.get(key);
 
@@ -124,6 +125,33 @@ export function ReaderScreen({ params }) {
     renderPage(idx, c.signal).catch(() => {}).finally(() => prefetchers.current.delete(c));
   };
 
+  // On a last page the likeliest next page is the next chapter's first. Its
+  // descriptor comes from that chapter's own getPages and it is keyed by that
+  // chapter's id, so old `pages` still never render under another chapter (#32).
+  // Arriving there joins it: through rendersInFlight once rendering started, or
+  // through the source's request cache while the page list is still loading.
+  const nextChapterLoads = useRef(new Set());
+  const prefetchNextChapter = () => {
+    const next = chapters[chapterIndex + 1];
+    if (!next || pagesFor.current !== chapter.id) return;
+    const key = cacheKeyFor(0, next.id);
+    if (renderCache.current.has(key)
+        || rendersInFlight.current.has(key)
+        || nextChapterLoads.current.has(key)) return;
+    const c = new AbortController();
+    prefetchers.current.add(c);
+    nextChapterLoads.current.add(key);
+    source.getPages(next.id, { signal: c.signal })
+      .then((pgs) => (pgs.length
+        ? renderPage(0, c.signal, { chapterId: next.id, descriptor: pgs[0] })
+        : null))
+      .catch(() => {})
+      .finally(() => {
+        nextChapterLoads.current.delete(key);
+        prefetchers.current.delete(c);
+      });
+  };
+
   // --- Render current page (no spinner flicker on cache hits) + prefetch next ---
   useEffect(() => {
     if (!usable || !pages || !pages[pageIndex] || pagesFor.current !== chapter.id) return;
@@ -151,6 +179,7 @@ export function ReaderScreen({ params }) {
         });
     }
     prefetch(pageIndex + 1);
+    if (pageIndex === pages.length - 1) prefetchNextChapter();
 
     return () => {
       cancelled = true;
