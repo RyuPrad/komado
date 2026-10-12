@@ -75,9 +75,10 @@ dir_is_empty() {
 # --- preconditions --------------------------------------------------------
 command -v git  >/dev/null 2>&1 || die "git is required."
 command -v npm  >/dev/null 2>&1 || die "npm is required."
-command -v node >/dev/null 2>&1 || die "Node.js >= 20 is required - see https://nodejs.org"
-node_major=$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)
-[ "$node_major" -ge 20 ] || die "Node.js >= 20 required (found $(node -v))."
+command -v node >/dev/null 2>&1 || die "Node.js >= 20.9 is required - see https://nodejs.org"
+# sharp's prebuilt binaries need Node >= 20.9 (the first Node 20 LTS release).
+node_ok=$(node -p 'const [a, b] = process.versions.node.split(".").map(Number); a > 20 || (a === 20 && b >= 9)' 2>/dev/null || echo false)
+[ "$node_ok" = true ] || die "Node.js >= 20.9 required (found $(node -v))."
 # Normalize with POSIX shell paths. Native Node under Git Bash can emit
 # `C:\...`, which bash tools do not interpret as an absolute sibling path.
 case "$APP_DIR" in /*) ;; *) APP_DIR="$(pwd -P)/$APP_DIR" ;; esac

@@ -49,7 +49,7 @@ curl -fsSL https://raw.githubusercontent.com/RyuPrad/komado/main/install.sh | ba
 ```
 
 Then just type **`komado`**. Re-run that same command any time to update. It needs
-`git`, **Node ≥ 20**, and `npm`; it installs to `~/.local/share/komado` with the
+`git`, **Node ≥ 20.9**, and `npm`; it installs to `~/.local/share/komado` with the
 launcher in `~/.local/bin` (override via `KOMADO_APP_DIR` / `KOMADO_BIN_DIR`).
 
 **Windows** - one line installs Node.js for you (via `winget`) if it's missing,
@@ -69,7 +69,7 @@ works:
 irm https://raw.githubusercontent.com/RyuPrad/komado/main/install.ps1 | iex
 ```
 
-Already have **Node ≥ 20**? The installer is still recommended because npm creates
+Already have **Node ≥ 20.9**? The installer is still recommended because npm creates
 PowerShell `.ps1` command shims that Restricted-policy machines refuse to run. If
 you install manually, use `npm.cmd i -g komado` and launch with `komado.cmd` from
 PowerShell. CMD can use the normal `npm i -g komado` / `komado` commands.
