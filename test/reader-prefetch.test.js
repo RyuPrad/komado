@@ -234,3 +234,68 @@ describe('ReaderScreen prefetch', () => {
     expect(readyFrame).not.toContain('rendered-old-0');
   });
 });
+
+describe('ReaderScreen cross-chapter prefetch', () => {
+  const twoChapters = {
+    ...params,
+    chapters: [
+      { id: 'c1', number: '1', volume: '1' },
+      { id: 'c2', number: '2', volume: '1' },
+    ],
+  };
+  const pagesFor = (chapterId, count) => (
+    Array.from({ length: count }, (_, index) => ({ id: `${chapterId}-${index}`, index }))
+  );
+  beforeEach(() => {
+    mocks.loadPageBuffer.mockImplementation(async (descriptor) => Buffer.from(descriptor.id));
+  });
+
+  it('renders the next chapter\'s first page from a last page and reuses it on arrival', async () => {
+    mocks.getPages.mockImplementation(async (chapterId) => pagesFor(chapterId, 2));
+    const { lastFrame, stdin, unmount } = renderReader({ ...twoChapters, startPage: 1 });
+    try {
+      await waitFor(() => lastFrame().includes('rendered-c1-1'));
+      await waitFor(() => mocks.renderInline.mock.calls.some(([buf]) => buf.toString() === 'c2-0'));
+      // A prefetch is not a visit: progress and read-sync still belong to c1.
+      expect(mocks.setProgress.mock.calls.every(([, entry]) => entry.chapterId === 'c1')).toBe(true);
+
+      stdin.write('l');
+      await waitFor(() => lastFrame().includes('rendered-c2-0'));
+      await waitFor(() => mocks.setProgress.mock.calls.some(([, entry]) => entry.chapterId === 'c2'));
+      expect(mocks.loadPageBuffer.mock.calls.filter(([d]) => d.id === 'c2-0')).toHaveLength(1);
+      expect(mocks.renderInline.mock.calls.filter(([buf]) => buf.toString() === 'c2-0')).toHaveLength(1);
+    } finally {
+      unmount();
+    }
+  });
+
+  it('waits for the last page before touching the next chapter', async () => {
+    mocks.getPages.mockImplementation(async (chapterId) => pagesFor(chapterId, 2));
+    const { lastFrame, unmount } = renderReader(twoChapters);
+    try {
+      await waitFor(() => lastFrame().includes('rendered-c1-0'));
+      await waitFor(() => mocks.renderInline.mock.calls.some(([buf]) => buf.toString() === 'c1-1'));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(mocks.getPages.mock.calls.map(([id]) => id)).toEqual(['c1']);
+    } finally {
+      unmount();
+    }
+  });
+
+  it('ignores a next chapter that fails to load', async () => {
+    mocks.getPages.mockImplementation(async (chapterId) => {
+      if (chapterId === 'c2') throw new Error('c2 is unavailable');
+      return pagesFor(chapterId, 1);
+    });
+    const { lastFrame, unmount } = renderReader(twoChapters);
+    try {
+      await waitFor(() => lastFrame().includes('rendered-c1-0'));
+      await waitFor(() => mocks.getPages.mock.calls.some(([id]) => id === 'c2'));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(lastFrame()).toContain('rendered-c1-0');
+      expect(lastFrame()).not.toContain('c2 is unavailable');
+    } finally {
+      unmount();
+    }
+  });
+});

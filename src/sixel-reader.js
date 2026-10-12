@@ -180,22 +180,45 @@ export async function runViewer({ sourceId, manga, chapters, chapterIndex, start
   // color regardless, so the crisp image lands the instant motion stops.
   let gliding = false;
 
-  // Warm the caches for the page the user is most likely to hit next. Runs
-  // only AFTER a draw burst settles (never on the scroll hot path); the heavy
-  // work happens in subprocesses/thread pools (chafa/sharp) or on the network,
-  // so the input loop stays responsive. Failures are ignored - the page just
-  // loads on demand as before.
-  function prefetchNext() {
-    if (!pages || pi + 1 >= pages.length) return;
-    const p = pi + 1;
-    const state = { ci, pi: p, chapter: chapters[ci], pages, page: pages[p] };
-    const { cols } = size();
+  // The next chapter's page list, requested once while the reader sits on a
+  // last page (every settled pan ends in prefetchNext). It only warms page 0:
+  // draw() still asks the source on the real chapter change, and the page caches
+  // key by chapter id + page index, so the warmed bytes and encodes are hits even
+  // if the source hands out fresh URLs by then.
+  const nextChapterPages = new Map(); // chapterId -> Promise<Page[]>
+
+  function warmPage(state, cols) {
     if (fitWidth && format === 'sixel') {
       sixelPageCached(state, cols).catch(() => {});
       if (motionQuality) sixelGlideCached(state, cols).catch(() => {}); // warm glide tier too
     } else {
       pageBuffer(state).catch(() => {});
     }
+  }
+
+  // Warm the caches for the page the user is most likely to hit next. Runs
+  // only AFTER a draw burst settles (never on the scroll hot path); the heavy
+  // work happens in subprocesses/thread pools (chafa/sharp) or on the network,
+  // so the input loop stays responsive. Failures are ignored - the page just
+  // loads on demand as before.
+  function prefetchNext() {
+    if (!pages) return;
+    const { cols } = size();
+    if (pi + 1 < pages.length) {
+      warmPage({ ci, pi: pi + 1, chapter: chapters[ci], pages, page: pages[pi + 1] }, cols);
+      return;
+    }
+    // On a last page the next page is the next chapter's first. Its descriptor
+    // comes from that chapter's own page list - never from `pages`.
+    const nextCi = ci + 1;
+    const chapter = chapters[nextCi];
+    if (!chapter) return;
+    memo(nextChapterPages, chapter.id, 2, () => source.getPages(chapter.id))
+      .then((nextPages) => {
+        if (closed || !nextPages.length) return;
+        warmPage({ ci: nextCi, pi: 0, chapter, pages: nextPages, page: nextPages[0] }, cols);
+      })
+      .catch(() => {});
   }
 
   // Fully styled (SGR inside, trailing reset) - callers just position and write.

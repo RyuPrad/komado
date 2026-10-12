@@ -24,7 +24,8 @@ with [Ink](https://github.com/vadimdemedes/ink).
   in any 24-bit terminal; if [`chafa`](https://hpjansson.org/chafa/) is installed it’s
   auto-used for sharper output. Falls back automatically if anything goes wrong.
 - **Reader UX.** Vertical scroll for tall pages, page/chapter navigation, fit-to-screen
-  toggle, runtime renderer switching, and next-page prefetch.
+  toggle, runtime renderer switching, and prefetch of the next page - on a chapter's
+  last page, the next chapter's first page.
 - **Reading progress.** Where you left off is saved per manga and resumable from
   *Continue reading*.
 - **Sign in to MangaDex (optional).** Log in to browse your **followed library**, see

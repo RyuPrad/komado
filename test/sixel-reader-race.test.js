@@ -300,19 +300,20 @@ describe('pixel viewer stale draws', () => {
       },
     });
     await readyForInput();
+    // c1's only page is a last page, so the cross-chapter prefetch has already
+    // asked for c2. Count only the loads the chapter change itself starts.
+    const c2Loads = () => source.getPages.mock.calls.filter(([id]) => id === 'c2').length;
+    await waitFor(() => c2Loads() === 1, 'next chapter prefetch');
 
     stdin.emit('data', Buffer.from('n'));
-    await waitFor(
-      () => source.getPages.mock.calls.filter(([id]) => id === 'c2').length === 1,
-      'next chapter load',
-    );
+    await waitFor(() => c2Loads() === 2, 'next chapter load');
     stdin.emit('data', Buffer.from('d')); // ignored while pages === null
     nextPages.resolve([page('c2p0', 0)]);
 
     await waitFor(() => stdout.text().includes('IMAGE:full:c2p0@80'), 'loaded chapter repaint');
     await quit(promise);
 
-    expect(source.getPages.mock.calls.filter(([id]) => id === 'c2')).toHaveLength(1);
+    expect(c2Loads()).toBe(2);
   });
 
   it('drops an old-geometry encode when the terminal resizes', async () => {
@@ -638,5 +639,73 @@ describe('pixel viewer image boundaries', () => {
     expect(frames.at(-1)).toContain('IMAGE:full:p0@80:TOP:50\x1b');
     expect(frames.at(-1)).not.toContain('\x1b[1;21r');
     expect(mocks.encodeSixelPage).toHaveBeenCalledTimes(2); // one full and one glide encode
+  });
+});
+
+describe('pixel viewer cross-chapter prefetch', () => {
+  const encodedIds = () => mocks.encodeSixelPage.mock.calls.map(([buf]) => buf.toString());
+
+  it('warms the next chapter\'s first page from a last page and draws it from cache', async () => {
+    const { promise, source } = startViewer({
+      chapters: [chapter('c1', '1'), chapter('c2', '2')],
+      pagesByChapter: { c1: [page('c1p0', 0)], c2: [page('c2p0', 0), page('c2p1', 1)] },
+    });
+    await readyForInput();
+    await waitFor(() => encodedIds().includes('c2p0@80'), 'next-chapter warm');
+    // Warming is not visiting: nothing is saved or synced for c2 yet.
+    expect(mocks.setProgress.mock.calls.map(([, value]) => value.chapterId)).toEqual(['c1']);
+    expect(source.syncChapterRead).not.toHaveBeenCalledWith('m1', 'c2');
+
+    stdin.emit('data', Buffer.from('d'));
+    await waitFor(() => stdout.text().includes('IMAGE:full:c2p0@80'), 'next-chapter draw');
+    await quit(promise);
+
+    expect(source.loadPageBuffer.mock.calls.filter(([d]) => d.id === 'c2p0')).toHaveLength(1);
+    expect(encodedIds().filter((id) => id === 'c2p0@80')).toHaveLength(1);
+    expect(mocks.setProgress.mock.calls.map(([, value]) => value.chapterId)).toEqual(['c1', 'c2']);
+  });
+
+  it('asks the source for the next chapter once while lingering on a last page', async () => {
+    const { promise, source } = startViewer({
+      chapters: [chapter('c1', '1'), chapter('c2', '2')],
+      pagesByChapter: { c1: [page('c1p0', 0)], c2: [page('c2p0', 0)] },
+    });
+    await readyForInput();
+    await waitFor(() => encodedIds().includes('c2p0@80'), 'next-chapter warm');
+    stdout.emit('resize'); // each settled draw burst runs prefetchNext again
+    await waitFor(() => mocks.setProgress.mock.calls.length === 2, 'resized redraw');
+    await quit(promise);
+
+    expect(source.getPages.mock.calls.filter(([id]) => id === 'c2')).toHaveLength(1);
+  });
+
+  it('keeps reading when the next chapter fails to load', async () => {
+    const { promise, source } = startViewer({
+      chapters: [chapter('c1', '1'), chapter('c2', '2')],
+      pagesByChapter: {
+        c1: [page('c1p0', 0)],
+        get c2() { throw new Error('c2 is unavailable'); },
+      },
+    });
+    await readyForInput();
+    await waitFor(() => source.getPages.mock.calls.some(([id]) => id === 'c2'), 'next-chapter request');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await quit(promise);
+
+    expect(stdout.text()).not.toContain('Error:');
+    expect(mocks.logger.warn).not.toHaveBeenCalled();
+  });
+
+  it('does not reach into the next chapter before the last page', async () => {
+    const { promise, source } = startViewer({
+      chapters: [chapter('c1', '1'), chapter('c2', '2')],
+      pagesByChapter: { c1: [page('c1p0', 0), page('c1p1', 1)], c2: [page('c2p0', 0)] },
+    });
+    await readyForInput();
+    await waitFor(() => encodedIds().includes('c1p1@80'), 'next-page warm');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await quit(promise);
+
+    expect(source.getPages.mock.calls.map(([id]) => id)).toEqual(['c1']);
   });
 });
