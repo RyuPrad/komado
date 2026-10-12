@@ -23,6 +23,26 @@ Otherwise the in-terminal cell reader is used:
 `);
 }
 
+// A sharp that can't load (e.g. a Windows install run from WSL) would otherwise
+// die with a raw stack trace on the first image. Returns null when it loads.
+async function sharpLoadProblem() {
+  try {
+    await import('sharp');
+    return null;
+  } catch (err) {
+    const { fileURLToPath } = await import('node:url');
+    const { explainSharpFailure } = await import('./lib/sharpCheck.js');
+    return explainSharpFailure(err, { file: fileURLToPath(import.meta.url) });
+  }
+}
+
+async function requireSharp() {
+  const problem = await sharpLoadProblem();
+  if (!problem) return;
+  console.error(`komado: ${problem}`);
+  process.exit(1);
+}
+
 async function doctor() {
   const { detectCapabilities, probeTerminal } = await import('./render/detect.js');
   const { paths, ensureDirs } = await import('./config.js');
@@ -46,6 +66,9 @@ async function doctor() {
     console.log(`  kitty graphics:   ${caps.kitty}  (env guess - run in a real terminal to probe)`);
     console.log(`  sixel:            ${caps.sixel}  (env guess - run in a real terminal to probe)`);
   }
+  const sharpProblem = await sharpLoadProblem();
+  const sharpVersions = sharpProblem ? null : (await import('sharp')).default.versions;
+  console.log(`  image library:    ${sharpProblem ? 'FAILED to load (see below)' : `sharp ${sharpVersions.sharp} (libvips ${sharpVersions.vips})`}`);
   console.log(`  chafa:            ${caps.chafa ? caps.chafaVersion : 'not installed'}`);
   console.log(`  inline backend:   ${caps.chafa ? 'chafa-symbols' : 'half-block'}  (config.renderer=${cfg.renderer})`);
   if (probe.queried) {
@@ -56,6 +79,7 @@ async function doctor() {
         : '\n  → No pixel protocol detected - rendering is limited to character cells.',
     );
   }
+  if (sharpProblem) console.log(`\n  → ${sharpProblem.split('\n').join('\n    ')}`);
   console.log('\nPaths:');
   console.log(`  home:     ${paths.home}`);
   console.log(`  config:   ${paths.configFile}`);
@@ -74,6 +98,7 @@ async function renderCmd(target, rest) {
     console.error('usage: komado render <image-path-or-url> [width]');
     process.exit(1);
   }
+  await requireSharp();
   const width = Number(rest[0]) || process.stdout.columns || 80;
 
   let buf;
@@ -119,6 +144,7 @@ async function runApp() {
     console.error('komado needs an interactive terminal (TTY). Run it directly in your terminal.');
     process.exit(1);
   }
+  await requireSharp(); // before the probe + alt screen, so the message stays readable
 
   // Always record crashes (not gated on KOMADO_DEBUG) so failures aren't lost
   // when the alt-screen is torn down.

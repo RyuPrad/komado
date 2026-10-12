@@ -81,6 +81,11 @@ PowerShell. CMD can use the normal `npm i -g komado` / `komado` commands.
 Don't use the `curl … | bash` line on Windows - under **Git Bash** or **WSL** it
 installs a launcher that only runs inside that shell, never from CMD/PowerShell.
 
+To read *inside* **WSL**, do install komado there with that line (it needs Node ≥ 20.9
+inside WSL). WSL also sees the Windows install's `komado` command on its `PATH`, but
+Linux Node can't load that copy's Windows image library (since 0.1.9 komado explains
+this instead of crashing). `type -a komado` shows which copy runs first.
+
 Uninstall from inside the app - **Settings → Uninstall komado…** (type `uninstall` to
 confirm) - removes the app, its launcher, and `~/.komado` (config, reading progress,
 MangaDex login). By hand that's
