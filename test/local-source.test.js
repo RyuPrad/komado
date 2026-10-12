@@ -78,6 +78,30 @@ describe('local source', () => {
     expect((await local.loadPageBuffer(pages[0])).length).toBeGreaterThan(0);
   });
 
+  // CVE-2026-39244 (GHSA-xcpc-8h2w-3j85): adm-zip < 0.6.0 allocated whatever
+  // uncompressed size an entry's headers declared, so a ~120-byte CBZ could demand
+  // ~4GB. Fixed versions size the read from the data actually present. 256 MiB is
+  // enough to tell them apart: a regressed dependency allocates it and then fails
+  // its CRC check in well under a second, instead of OOMing the runner.
+  it('reads a CBZ entry by its real size, not a forged header size', async () => {
+    const page = await png({ r: 1, g: 2, b: 3 });
+    const zip = new AdmZip();
+    zip.addFile('p.png', page);
+    const bytes = zip.toBuffer();
+    const forged = 256 * 1024 * 1024;
+    bytes.writeUInt32LE(forged, bytes.indexOf(Buffer.from('PK\x03\x04', 'latin1')) + 22); // local header
+    bytes.writeUInt32LE(forged, bytes.indexOf(Buffer.from('PK\x01\x02', 'latin1')) + 24); // central directory
+    // Outside the scanned library so no other test sees it.
+    const file = path.join(os.tmpdir(), `komado-forged-size-${process.pid}.cbz`);
+    fs.writeFileSync(file, bytes);
+    try {
+      const data = await local.loadPageBuffer({ index: 0, kind: 'archive', file, entry: 'p.png' });
+      expect(data.equals(page)).toBe(true);
+    } finally {
+      fs.rmSync(file, { force: true });
+    }
+  });
+
   it.runIf(hasRar)('reads .cbr entries via node-unrar-js', async () => {
     const manga = (await local.search('Rar')).data[0];
     const chapter = (await local.listChapters(manga.id)).data[0];
